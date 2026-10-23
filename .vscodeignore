@@ -1,0 +1,11 @@
+# 源码与构建中间物不进 VSIX（out/extension.js 为运行时产物，必须保留）
+.vscode/**
+src/**
+node_modules/**/*.map
+out/*.map
+tsconfig.json
+package-lock.json
+npm-debug.log*
+.gitignore
+*.vsix
+tools/gen-icon.cjs

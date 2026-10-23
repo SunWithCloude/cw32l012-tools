@@ -1,0 +1,14 @@
+# 依赖与构建产物
+node_modules/
+out/
+*.vsix
+*.map
+
+# 本机配置
+.vscode/
+.mcp.json
+.codegraph/
+
+# 系统垃圾
+.DS_Store
+Thumbs.db
