@@ -16,6 +16,15 @@ CW32L012 Tools — 所有版本的变更记录。
 - 新增调试定位工具 `tools_um/dap_probe_test.py`：手动 stdio DAP 握手复现
   launch 序列，直接拿 dap-server 真实报错
 - 手动 DAP 全流程验证：initialize → launch（含 ELF 烧录）→ OK（1.0s）
+- **可移植性修复**：`cw32l012.chipDescriptionPath` 原默认值是写死的本机路径
+  `C://Users//Administrator//Downloads//CW32L0_Series.yaml`，且 probe-rs 命令行
+  无条件传 `--chip-description-path`——别人装上插件、本机没有该文件时烧录必然失败。
+  现改为：默认空（probe-rs 0.32+ 已内置 CW32L0）→ 空值时自动探测工作区
+  `tools/CW32L0_Series.yaml`（旧版 probe-rs 兜底）→ 仅非空才拼命令行参数
+- **文档英文化**：`README.md` 改为英文（GitHub / 市场页展示），原中文版保留为
+  `README.zh-CN.md`；顺手修正安装示例里的旧版本号与已迁移的本机路径
+- 补齐开源要件：`LICENSE`（MIT）、`.gitattributes`、GitHub Actions CI
+  （npm ci → tsc 类型检查 → 打包 VSIX 并上传产物）
 
 ---
 
