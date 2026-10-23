@@ -20,7 +20,8 @@ import { spawn } from 'child_process';
 
 const DASHBOARD_TITLE = 'CW32L012 Console';
 const LOG_NAME = 'CW32L012 Tools';
-const DEFAULT_YAML = 'C:\\Users\\Administrator\\Downloads\\CW32L0_Series.yaml';
+/** 旧版 probe-rs（< 0.32）才需要的外部目标文件；新版已内置 CW32L0 */
+const LEGACY_YAML_REL = path.join('tools', 'CW32L0_Series.yaml');
 const DEFAULT_PROBE = '0483:3748';
 const DEFAULT_CHIP = 'CW32L012x8';
 const DEFAULT_TARGET = 'thumbv6m-none-eabi';
@@ -132,6 +133,26 @@ interface ExtConfig {
   mcpAutoStart: boolean;
 }
 
+/**
+ * 解析芯片描述文件路径。
+ *
+ * 优先级：用户设置 → 工作区 `tools/CW32L0_Series.yaml` → 空。
+ * probe-rs **0.32 起内置 CW32L0**，空值即可直接 `--chip CW32L012x8`；
+ * 外部 YAML 只对更旧的 probe-rs 有意义，因此这里绝不写死本机绝对路径
+ * （否则别人装上插件后烧录必然找不到文件）。
+ */
+function resolveChipDescriptionPath(explicit: string, workspaceRoot?: string): string {
+  if (explicit) {
+    return explicit;
+  }
+  const root = workspaceRoot || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!root) {
+    return '';
+  }
+  const bundled = path.join(root, LEGACY_YAML_REL);
+  return fs.existsSync(bundled) ? bundled : '';
+}
+
 function getConfig(): ExtConfig {
   const cfg = vscode.workspace.getConfiguration('cw32l012');
   const profile = cfg.get<string>('profile') || 'debug';
@@ -141,7 +162,10 @@ function getConfig(): ExtConfig {
     probeId: cfg.get<string>('probeId') || DEFAULT_PROBE,
     protocol: cfg.get<string>('protocol') || 'swd',
     chip: cfg.get<string>('chip') || DEFAULT_CHIP,
-    chipDescriptionPath: cfg.get<string>('chipDescriptionPath') || DEFAULT_YAML,
+    chipDescriptionPath: resolveChipDescriptionPath(
+      cfg.get<string>('chipDescriptionPath') || '',
+      cfg.get<string>('workspaceRoot') || undefined
+    ),
     flashBaseAddress: cfg.get<string>('flashBaseAddress') || FLASH_BASE_DEFAULT,
     workspaceRoot: cfg.get<string>('workspaceRoot') || undefined,
     apiPort: cfg.get<number>('apiPort') ?? 3678,
@@ -499,12 +523,13 @@ function q(value: string): string { return `"${value}"`; }
 
 function probeBaseArgs(): string[] {
   const cfg = getConfig();
-  return [
-    '--probe', cfg.probeId,
-    '--protocol', cfg.protocol,
-    '--chip-description-path', q(cfg.chipDescriptionPath),
-    '--chip', cfg.chip
-  ];
+  const args = ['--probe', cfg.probeId, '--protocol', cfg.protocol];
+  // 只有真正需要外部目标文件时才传；probe-rs 0.32+ 内置 CW32L0
+  if (cfg.chipDescriptionPath) {
+    args.push('--chip-description-path', q(cfg.chipDescriptionPath));
+  }
+  args.push('--chip', cfg.chip);
+  return args;
 }
 
 function buildDownloadCommand(artifact: FirmwareCandidate): string {
@@ -1683,6 +1708,9 @@ async function startDebugSession(): Promise<boolean> {
     coreConfigs: [{ coreIndex: 0, programBinary: artifact.filePath }],
     cwd: root
   };
+  if (!cfg.chipDescriptionPath) {
+    delete launch.chipDescriptionPath;
+  }
   logBoth(`[debug] 启动 DAP 会话: ${artifact.filePath}`);
   try {
     const ok = await vscode.debug.startDebugging(vscode.workspace.workspaceFolders?.[0], launch);
@@ -2901,7 +2929,7 @@ export function activate(context: vscode.ExtensionContext): void {
             return undefined;
           }
           const cfg = getConfig();
-          return {
+          const launch: vscode.DebugConfiguration = {
             type: DEBUG_TYPE,
             name: 'CW32L012 Debug',
             request: 'launch',
@@ -2914,6 +2942,10 @@ export function activate(context: vscode.ExtensionContext): void {
             coreConfigs: [{ coreIndex: 0, programBinary: artifact.filePath }],
             cwd: root
           } as vscode.DebugConfiguration;
+          if (!cfg.chipDescriptionPath) {
+            delete launch.chipDescriptionPath;
+          }
+          return launch;
         }
         return config;
       }

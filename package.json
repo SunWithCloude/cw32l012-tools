@@ -254,8 +254,8 @@
         },
         "cw32l012.chipDescriptionPath": {
           "type": "string",
-          "default": "C:\\Users\\Administrator\\Downloads\\CW32L0_Series.yaml",
-          "description": "Path to the official CW32L0 YAML metadata file used by probe-rs."
+          "default": "",
+          "description": "Path to an external CW32L0 target YAML for probe-rs. Leave empty: probe-rs 0.32+ ships CW32L0 built in, and the extension auto-detects tools/CW32L0_Series.yaml in the workspace as a fallback for older probe-rs."
         },
         "cw32l012.probeId": {
           "type": "string",
