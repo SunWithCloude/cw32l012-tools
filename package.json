@@ -2,7 +2,7 @@
   "name": "cw32l012-tools",
   "displayName": "CW32L012 Tools",
   "description": "Build, flash, visually debug, and AI-drive CW32L012 projects with a probe-rs + DAPLink workflow.",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "cw32l012",
   "repository": {
     "type": "git",
