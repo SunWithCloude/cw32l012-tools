@@ -2,8 +2,42 @@
 
 CW32L012 Tools — 所有版本的变更记录。
 
-- 当前版本：`0.6.7`
+- 当前版本：`0.7.0`
 - 开发中：无（见下方条目）
+
+---
+
+## 0.7.0（2026-10-31，探针独占模型 + 多家族 + cw32-detect 集成）
+
+- **修复「调试会话静默死亡」**（0.6.x 根因实锤：运行态 DAP `readMemory`
+  失败被静默吞掉 → 内存/寄存器读取静默回退 CLI `probe-rs read` → CLI 与
+  `dap-server --single-session` 抢探针 → dap-server 死亡 → 会话结束）：
+  - 新增 `readMemoryForTools` 统一读内存入口（MCP / HTTP API / 仪表盘共用）：
+    **会话存活期间只走 DAP**，运行态失败自动 pause→读→resume，绝不回落 CLI；
+    无会话才走 probe-rs CLI
+  - 新增 `dapRequestStrict`：DAP 请求失败写入输出通道（不再静默）；
+    轮询类请求仍走静默版
+  - 新增 `releaseProbeForHardware`：烧录/verify/复位/全片擦除/cw32-detect
+    识别在执行前自动结束活动调试会话释放探针（结果带 `sessionStopped`）；
+    deep status 在会话存活时跳过 reset 级检测（不再为查状态杀会话）
+  - `cw32l012.checkStatus` 命令补上 humanLease；F5/启动调试前自动结束旧会话
+- **多家族支持（CW32F030 就绪）**：
+  - 新增 `cw32l012.family` 设置（`auto` 默认，按 chip 前缀自动判定）；
+    `src/families.ts` 携带 L012/F030 两套寄存器解码表（L012 新增 GPIOC/GPIOF）
+  - F030 表从官方 CMSIS 头（PAC 布局断言全过）提取并与厂商头交叉核对：
+    SYSCTRL@0x40010000、UART1@0x40013800、GPIO 块距 0x400、RCHF 非线性分频、
+    AHBEN/APBENx 无 KEY（与 L012 相反）、GPIO 有 PDR
+  - 插件捆绑 `tools/families/CW32F030_Series.yaml`（与上游 PR #4549 逐字节
+    一致）：F030 无需手动配 chip-description-path
+  - 状态栏/仪表盘/诊断/MCP 枚举全部随家族参数化（DASHBOARD_TITLE → CW32 Console）
+- **cw32-detect 集成**：新增 MCP 工具 `cw32_chip_detect(apply)` 与 HTTP 路由
+  `GET /api/detect?apply=1`——运行 cw32-detect 读出厂数字签名（型号串/容量/
+  管脚/UID），`apply` 直接写入 `cw32l012.chip`。可执行文件由
+  `cw32l012.detectPath` 指定（默认 PATH 查找）
+- **MCP 接入体验**：新命令 `CW32: 生成 .mcp.json`（仪表盘 Agent API 面板加
+  按钮）——按当前 mcpPort 生成正确的 workspace `.mcp.json`，替代早前指向
+  第三方扩展 7580 端口的陈旧写法
+- MCP 工具 18 → **19**（`cw32_chip_detect`）
 
 ---
 

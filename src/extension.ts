@@ -4,31 +4,35 @@ import * as path from 'path';
 import * as http from 'http';
 import * as os from 'os';
 import { spawn } from 'child_process';
+import { FAMILIES, familyFromChip, FamilyKey, FamilyProfile, PeriphDef, RegDef, RegField } from './families';
 
 /* ============================================================
- * CW32L012 Tools v0.6
+ * CW32L012 Tools v0.7
  *
  *  - 构建/烧录：cargo metadata 定位真实产物目录，allowlist + 魔数校验
  *  - 可视化调试：注册 cw32l012-probe-rs 调试适配器（probe-rs dap-server），
  *    仪表盘轮询 DAP 会话渲染 PC/调用栈/变量/内存
- *  - AI 接口：内嵌 localhost HTTP JSON API，Agent 可直接 curl 调用
- *    （/api/build /api/flash /api/reset /api/memory /api/debug/...）
- *  - Keil 感增强：常驻状态栏、例程选择器（对标 Keil target 下拉）、
- *    烧录后自动 verify、全片擦除、串口监视器（serialport 动态加载，
- *    模块缺失时提示改用外部串口工具，不崩溃）
+ *  - 探针独占模型：调试会话存活期间一切读数只走 DAP（运行态自动
+ *    pause→读→resume），硬件操作自动结束会话释放探针——杜绝 CLI 与
+ *    dap-server 抢探针导致的会话静默死亡
+ *  - 多家族：family profile 聚合芯片/寄存器表/目标文件，CW32L012 + CW32F030
+ *  - AI 接口：内嵌 localhost HTTP JSON API + MCP(SSE) 服务器
+ *  - Keil 感增强：常驻状态栏、例程选择器、烧录后自动 verify、串口监视器
  * ============================================================ */
 
-const DASHBOARD_TITLE = 'CW32L012 Console';
+const DASHBOARD_TITLE = 'CW32 Console';
 const LOG_NAME = 'CW32L012 Tools';
 /** 旧版 probe-rs（< 0.32）才需要的外部目标文件；新版已内置 CW32L0 */
 const LEGACY_YAML_REL = path.join('tools', 'CW32L0_Series.yaml');
 const DEFAULT_PROBE = '0483:3748';
 const DEFAULT_CHIP = 'CW32L012x8';
 const DEFAULT_TARGET = 'thumbv6m-none-eabi';
-const FLASH_BASE_DEFAULT = '0x00000000'; // CW32L012 FLASH ORIGIN（memory.x），不是 0x08000000
+const FLASH_BASE_DEFAULT = '0x00000000'; // CW32 全系列 FLASH ORIGIN（memory.x），不是 0x08000000
 const DEBUG_TYPE = 'cw32l012-probe-rs';
 const AUTO_EXAMPLE = '__auto__'; // 例程选择器哨兵值：自动选择最新产物
 const WORKSPACE_EXAMPLE_KEY = 'cw32l012.selectedExample';
+/** cw32-detect（github.com/SunWithCloude/cw32-probe-rs-compat）可执行文件名/路径 */
+const DEFAULT_DETECT_PATH = 'cw32-detect';
 
 let logChannel: vscode.OutputChannel | undefined;
 let dashboardPanel: vscode.WebviewPanel | undefined;
@@ -122,6 +126,8 @@ interface ExtConfig {
   probeId: string;
   protocol: string;
   chip: string;
+  familyKey: FamilyKey;
+  family: FamilyProfile;
   chipDescriptionPath: string;
   flashBaseAddress: string;
   workspaceRoot?: string;
@@ -131,49 +137,68 @@ interface ExtConfig {
   monitorBaudRate: number;
   mcpPort: number;
   mcpAutoStart: boolean;
+  detectPath: string;
 }
 
 /**
  * 解析芯片描述文件路径。
  *
- * 优先级：用户设置 → 工作区 `tools/CW32L0_Series.yaml` → 空。
+ * 优先级：用户设置 → 工作区 `tools/CW32L0_Series.yaml` → 家族回退。
  * probe-rs **0.32 起内置 CW32L0**，空值即可直接 `--chip CW32L012x8`；
- * 外部 YAML 只对更旧的 probe-rs 有意义，因此这里绝不写死本机绝对路径
- * （否则别人装上插件后烧录必然找不到文件）。
+ * CW32F030 未内置——回退到插件捆绑的 `tools/families/CW32F030_Series.yaml`。
+ * 这里绝不写死本机绝对路径（否则别人装上插件后烧录必然找不到文件）。
  */
-function resolveChipDescriptionPath(explicit: string, workspaceRoot?: string): string {
+function resolveChipDescriptionPath(explicit: string, workspaceRoot: string | undefined, family: FamilyProfile): string {
   if (explicit) {
     return explicit;
   }
   const root = workspaceRoot || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!root) {
-    return '';
+  if (root) {
+    const bundled = path.join(root, LEGACY_YAML_REL);
+    if (fs.existsSync(bundled)) {
+      return bundled;
+    }
   }
-  const bundled = path.join(root, LEGACY_YAML_REL);
-  return fs.existsSync(bundled) ? bundled : '';
+  if (!family.builtinTarget && family.bundledYaml && extContext) {
+    const bundled = path.join(extContext.extensionUri.fsPath, 'tools', 'families', family.bundledYaml);
+    if (fs.existsSync(bundled)) {
+      return bundled;
+    }
+  }
+  return '';
 }
 
 function getConfig(): ExtConfig {
   const cfg = vscode.workspace.getConfiguration('cw32l012');
   const profile = cfg.get<string>('profile') || 'debug';
+  const chip = cfg.get<string>('chip') || DEFAULT_CHIP;
+  const familySetting = cfg.get<string>('family') || 'auto';
+  const familyKey: FamilyKey = familySetting === 'cw32l012' || familySetting === 'cw32f030'
+    ? familySetting
+    : familyFromChip(chip);
+  const family = FAMILIES[familyKey];
   return {
     target: cfg.get<string>('target') || DEFAULT_TARGET,
     profile: profile === 'release' ? 'release' : 'debug',
     probeId: cfg.get<string>('probeId') || DEFAULT_PROBE,
     protocol: cfg.get<string>('protocol') || 'swd',
-    chip: cfg.get<string>('chip') || DEFAULT_CHIP,
+    chip,
+    familyKey,
+    family,
     chipDescriptionPath: resolveChipDescriptionPath(
       cfg.get<string>('chipDescriptionPath') || '',
-      cfg.get<string>('workspaceRoot') || undefined
+      cfg.get<string>('workspaceRoot') || undefined,
+      family
     ),
-    flashBaseAddress: cfg.get<string>('flashBaseAddress') || FLASH_BASE_DEFAULT,
+    flashBaseAddress: cfg.get<string>('flashBaseAddress') || family.flashBase,
     workspaceRoot: cfg.get<string>('workspaceRoot') || undefined,
     apiPort: cfg.get<number>('apiPort') ?? 3678,
     apiToken: cfg.get<string>('apiToken') || '',
     verifyAfterFlash: cfg.get<boolean>('verifyAfterFlash') ?? true,
     monitorBaudRate: cfg.get<number>('monitorBaudRate') ?? 115200,
     mcpPort: cfg.get<number>('mcpPort') ?? 3679,
-    mcpAutoStart: cfg.get<boolean>('mcpAutoStart') ?? true
+    mcpAutoStart: cfg.get<boolean>('mcpAutoStart') ?? true,
+    detectPath: cfg.get<string>('detectPath') || DEFAULT_DETECT_PATH
   };
 }
 
@@ -300,6 +325,37 @@ async function setSourceDir(): Promise<void> {
   void pushDashState();
   void refreshStatusBar();
   await updateDashboardView();
+}
+
+/**
+ * 生成/刷新工作区 .mcp.json：把本插件内嵌 MCP 服务器的接入信息写给
+ * MCP 客户端（Claude Code / ZCode 等）。端口取自 cw32l012.mcpPort。
+ */
+async function generateMcpJson(): Promise<void> {
+  const ws = vscode.workspace.workspaceFolders?.[0];
+  if (!ws) {
+    vscode.window.showWarningMessage('请先打开工作区再生成 .mcp.json。');
+    return;
+  }
+  const port = getConfig().mcpPort;
+  const content = JSON.stringify(
+    { mcpServers: { cw32l012: { type: 'sse', url: `http://127.0.0.1:${port}/sse` } } },
+    null,
+    2
+  ) + '\n';
+  const file = path.join(ws.uri.fsPath, '.mcp.json');
+  try {
+    fs.writeFileSync(file, content, 'utf8');
+    logBoth(`[mcp] 已生成 ${file}（MCP 端口 ${port}）`);
+    void vscode.window.showInformationMessage(
+      `.mcp.json 已生成：MCP 客户端经 http://127.0.0.1:${port}/sse 接入本插件的 19 个工具。`,
+      '打开文件'
+    ).then(pick => {
+      if (pick === '打开文件') void vscode.window.showTextDocument(vscode.Uri.file(file));
+    });
+  } catch (err) {
+    vscode.window.showErrorMessage(`写入 .mcp.json 失败: ${err instanceof Error ? err.message : err}`);
+  }
 }
 
 /* ------------------------------------------------------------
@@ -599,6 +655,14 @@ async function getProbeSummary(deepCheck = false): Promise<ProbeSummary> {
     probeSummaryCache = { summary: light, at: Date.now() };
     return light;
   }
+  // 调试会话存活时绝不做 reset 级检测：probe-rs reset 会与 dap-server 抢探针
+  if (debugSession) {
+    const light: ProbeSummary = {
+      probe: 'online', mcu: 'unknown', device: deviceLine,
+      detail: '调试会话进行中，跳过 reset 级检测（避免抢占探针）'
+    };
+    return light;
+  }
   try {
     await runCommandLogged(`probe-rs reset ${probeBaseArgs().join(' ')}`, process.cwd(), 45_000);
     const online: ProbeSummary = { probe: 'online', mcu: 'online', device: deviceLine, detail: 'MCU 应答（reset 成功）' };
@@ -642,16 +706,17 @@ async function refreshStatusBar(): Promise<void> {
     const item = ensureStatusBar();
     const summary = await getProbeSummary(false); // 轻量：probe-rs list，不做 reset
     const kind = statusKindFromSummary(summary);
+    const label = getConfig().family.label;
     if (kind === 'online') {
-      item.text = `$(chip) CW32L012: MCU 在线 $(check)`;
+      item.text = `$(chip) ${label}: MCU 在线 $(check)`;
       item.color = '#5ad46a';
       item.tooltip = summary.device;
     } else if (kind === 'offline') {
-      item.text = `$(chip) CW32L012: 探针离线`;
+      item.text = `$(chip) ${label}: 探针离线`;
       item.color = new vscode.ThemeColor('statusBar.foreground');
       item.tooltip = summary.detail;
     } else {
-      item.text = `$(chip) CW32L012: MCU 无应答 $(error)`;
+      item.text = `$(chip) ${label}: MCU 无应答 $(error)`;
       item.color = '#ff4a4a';
       item.tooltip = summary.detail;
     }
@@ -669,8 +734,105 @@ async function dapRequest<T>(request: string, args: unknown): Promise<T | undefi
   try {
     return await debugSession.customRequest(request, args) as T;
   } catch {
+    // 轮询类请求（threads/stackTrace 等）失败是常态（目标运行中/会话将结束），保持静默；
+    // 读内存/写内存走 dapRequestStrict，失败必留痕。
     return undefined;
   }
+}
+
+/** 严格版 DAP 请求：失败抛 DapError 并写入日志（不静默——0.6.x 会话被杀的根因之一就是错误被吞） */
+class DapError extends Error {}
+
+async function dapRequestStrict<T>(request: string, args: unknown): Promise<T> {
+  if (!debugSession) {
+    throw new DapError('无活动调试会话');
+  }
+  try {
+    return await debugSession.customRequest(request, args) as T;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logBoth(`[dap] ${request} 失败: ${msg}`);
+    throw new DapError(msg);
+  }
+}
+
+/**
+ * 硬件操作前释放探针：调试会话持有 dap-server --single-session，任何 CLI
+ * probe-rs 命令（download/verify/reset/erase/read）与它并存都会触发探针
+ * 争抢，dap-server 死亡 = 会话静默结束。故硬件操作前必须先结束会话。
+ * 返回 true 表示确实结束了一个会话（调用方应把这一点带进结果）。
+ */
+async function releaseProbeForHardware(op: string): Promise<boolean> {
+  if (!debugSession) {
+    return false;
+  }
+  logBoth(`[hardware] ${op} 需要独占探针，自动结束调试会话`);
+  try {
+    await vscode.debug.stopDebugging(debugSession);
+  } catch (err) {
+    logBoth(`[hardware] 结束会话失败（继续执行 ${op}）: ${err instanceof Error ? err.message : err}`);
+  }
+  debugSession = undefined;
+  // 给 dap-server 进程一点退出时间，避免 probe 句柄尚未释放
+  await new Promise(resolve => setTimeout(resolve, 600));
+  return true;
+}
+
+/**
+ * 读内存的统一入口（MCP / HTTP API / 仪表盘共用）。
+ *
+ * 有调试会话：只走 DAP；运行态导致读取失败时自动 pause→读→resume，
+ * 绝不回落 CLI（探针在 dap-server 手里，CLI 必然争抢）。无会话才走 CLI。
+ */
+async function readMemoryForTools(address: string, count: number): Promise<{ buf?: Buffer; error?: string; paused?: boolean }> {
+  const addrHex = address.startsWith('0x') ? address : `0x${address}`;
+  const viaDap = async (): Promise<Buffer> => {
+    const res = await dapRequestStrict<{ data?: string }>('readMemory', {
+      memoryReference: addrHex,
+      offset: 0,
+      count
+    });
+    if (!res?.data) {
+      throw new DapError('readMemory 返回空数据');
+    }
+    return Buffer.from(res.data, 'base64');
+  };
+  if (debugSession) {
+    try {
+      return { buf: await viaDap() };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      const state = await fetchDebugState();
+      if (state.halted) {
+        return { error: `DAP readMemory 失败（会话已暂停仍失败）: ${reason}` };
+      }
+      // 运行态读失败 → 自动 pause→读→resume
+      logBoth(`[memory] 运行态 DAP 读失败，自动 pause→读→resume: ${reason}`);
+      const tid = await getMainThreadId();
+      if (tid == null) {
+        return { error: `运行态读取失败且取不到线程 id: ${reason}` };
+      }
+      try {
+        await debugSession.customRequest('pause', { threadId: tid });
+      } catch (perr) {
+        return { error: `自动暂停失败: ${perr instanceof Error ? perr.message : perr}` };
+      }
+      try {
+        return { buf: await viaDap(), paused: true };
+      } finally {
+        try {
+          await debugSession.customRequest('continue', { threadId: tid });
+        } catch (cerr) {
+          logBoth(`[memory] 恢复运行失败: ${cerr instanceof Error ? cerr.message : cerr}`);
+        }
+      }
+    }
+  }
+  const buf = await readMemoryViaCli(addrHex, count);
+  if (!buf) {
+    return { error: '读取失败：无调试会话且 CLI read 失败（MCU 未连接？）' };
+  }
+  return { buf };
 }
 
 interface DebugState {
@@ -752,6 +914,48 @@ async function readMemoryViaCli(address: string, count: number): Promise<Buffer 
   }
 }
 
+/* ---- cw32-detect 集成（出厂数字签名识别，github.com/SunWithCloude/cw32-probe-rs-compat） ---- */
+
+interface DetectReport {
+  ok: boolean;
+  chip?: string;
+  type_string?: string;
+  flash?: number | null;
+  ram?: number | null;
+  pins?: string | null;
+  uid?: string | null;
+  match?: string;
+  builtin?: boolean;
+  warnings?: string[];
+  raw?: string;
+}
+
+/** 运行 cw32-detect --json（需独占探针，会自动结束活动调试会话） */
+async function runChipDetect(): Promise<DetectReport> {
+  await releaseProbeForHardware('cw32-detect 识别');
+  const exe = getConfig().detectPath || DEFAULT_DETECT_PATH;
+  let out = '';
+  try {
+    const res = await runCommandLogged(`${exe} --json`, process.cwd(), 90_000);
+    out = res.stdout.trim();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('not recognized') || msg.includes('不是内部或外部命令') || msg.includes('ENOENT') || msg.includes('not found')) {
+      return {
+        ok: false,
+        raw: 'cw32-detect 未找到。安装：github.com/SunWithCloude/cw32-probe-rs-compat（cargo build --release 后把 cw32-detect.exe 放进 PATH，或设置 cw32l012.detectPath 指向它）'
+      };
+    }
+    return { ok: false, raw: `cw32-detect 运行失败: ${msg.split('\n')[0]}` };
+  }
+  try {
+    const parsed = JSON.parse(out) as DetectReport;
+    return { ...parsed, ok: true };
+  } catch {
+    return { ok: false, raw: `cw32-detect 输出不是 JSON: ${out.slice(0, 200)}` };
+  }
+}
+
 /* ------------------------------------------------------------
  * 调试控制（步进 / 复位 / 写内存 / 外设寄存器解码）
  * ---------------------------------------------------------- */
@@ -800,111 +1004,45 @@ async function writeMemoryViaDap(address: string, hexBytes: string): Promise<num
   return res?.success === true ? buf.length : 0;
 }
 
-/* ---- 外设寄存器地图（偏移与位段取自 HAL pac.rs，已逐项核对） ---- */
+/* ---- 外设寄存器地图：按家族从 families.ts 取（cw32l012 / cw32f030 各一套） ---- */
 
-interface RegField { name: string; msb: number; lsb: number; decode?: (v: number) => string; }
-interface RegDef { off: number; name: string; fields?: RegField[]; note?: string; }
-interface PeriphDef { key: string; label: string; base: number; span: number; regs: RegDef[]; }
+function peripheralMap(): PeriphDef[] {
+  return getConfig().family.peripherals;
+}
 
-const HSI_DIV_TABLE: Array<[number, string]> = [
-  [0, '/32'], [1, '/1'], [2, '/2'], [3, '/3'], [4, '/4'], [5, '/5'], [6, '/6'], [7, '/7'],
-  [8, '/8'], [9, '/9'], [10, '/10'], [11, '/12'], [12, '/16'], [13, '/20'], [14, '/24（复位默认）'], [15, '/28']
-];
-
-const PERIPHERAL_MAP: PeriphDef[] = [
-  {
-    key: 'sysctrl', label: 'SYSCTRL 时钟控制', base: 0x40004000, span: 0x48,
-    regs: [
-      { off: 0x00, name: 'CR0', fields: [
-        { name: 'SYSCLKSRC', msb: 2, lsb: 0, decode: v => ['HSI', 'HSE', 'PLL', '?3', 'LSI?', 'LSE?', '?6', '?7'][v] ?? `?${v}` },
-        { name: 'PCLKPRS', msb: 4, lsb: 3, decode: v => `/2^${v}` },
-        { name: 'HCLKPRS', msb: 7, lsb: 5, decode: v => `/2^${v}` }
-      ] },
-      { off: 0x04, name: 'CR1' },
-      { off: 0x08, name: 'CR2', fields: [{ name: 'FLASHWAIT', msb: 6, lsb: 4 }, { name: 'FETCH', msb: 7, lsb: 7 }, { name: 'CACHE', msb: 8, lsb: 8 }] },
-      { off: 0x18, name: 'HSI', fields: [
-        { name: 'TRIM', msb: 10, lsb: 0 },
-        { name: 'DIV', msb: 14, lsb: 11, decode: v => (HSI_DIV_TABLE[v] ?? [-1, `?${v}`])[1] },
-        { name: 'STABLE', msb: 15, lsb: 15, decode: v => v ? '已稳定' : '未稳定' }
-      ] },
-      { off: 0x24, name: 'LSE' },
-      { off: 0x2C, name: 'DEBUG' },
-      { off: 0x30, name: 'AHBEN', note: 'GPIO 端口时钟门控（0x5A5A 键保护写入）' },
-      { off: 0x34, name: 'APBEN2' },
-      { off: 0x38, name: 'APBEN1' },
-      { off: 0x4C, name: 'RESETFLAG', note: '复位来源标志' }
-    ]
-  },
-  {
-    key: 'gpioa', label: 'GPIOA', base: 0x48000000, span: 0x64,
-    regs: [
-      { off: 0x00, name: 'DIR', fields: [{ name: 'pin0..15', msb: 15, lsb: 0, decode: v => v.toString(2).padStart(16, '0') }] },
-      { off: 0x04, name: 'OPENDRAIN', fields: [{ name: 'pin0..15', msb: 15, lsb: 0, decode: v => v.toString(2).padStart(16, '0') }] },
-      { off: 0x10, name: 'PUR', note: '上拉使能（无 PDR 下拉寄存器）' },
-      { off: 0x14, name: 'AFRH', note: '复用 pin8..15，每脚 4bit' },
-      { off: 0x18, name: 'AFRL', note: '复用 pin0..7，每脚 4bit' },
-      { off: 0x1C, name: 'ANALOG' },
-      { off: 0x34, name: 'ISR', note: '边沿中断状态' },
-      { off: 0x50, name: 'IDR', fields: [{ name: 'pin0..15', msb: 15, lsb: 0, decode: v => v.toString(2).padStart(16, '0') }] },
-      { off: 0x54, name: 'ODR', fields: [{ name: 'pin0..15', msb: 15, lsb: 0, decode: v => v.toString(2).padStart(16, '0') }] },
-      { off: 0x58, name: 'BRR' },
-      { off: 0x5C, name: 'BSRR' },
-      { off: 0x60, name: 'TOG' }
-    ]
-  },
-  {
-    key: 'gpiob', label: 'GPIOB', base: 0x48000100, span: 0x64,
-    regs: [
-      { off: 0x00, name: 'DIR' }, { off: 0x04, name: 'OPENDRAIN' }, { off: 0x10, name: 'PUR' },
-      { off: 0x14, name: 'AFRH' }, { off: 0x18, name: 'AFRL' }, { off: 0x50, name: 'IDR' }, { off: 0x54, name: 'ODR' }
-    ]
-  },
-  {
-    key: 'uart1', label: 'UART1', base: 0x40000C00, span: 0x40,
-    regs: [
-      { off: 0x00, name: 'CR1', fields: [
-        { name: 'TXEN', msb: 0, lsb: 0, decode: v => v ? '发送开' : '发送关' },
-        { name: 'RXEN', msb: 1, lsb: 1, decode: v => v ? '接收开' : '接收关' }
-      ] },
-      { off: 0x04, name: 'CR2', note: 'SOURCE 时钟源选择等' },
-      { off: 0x08, name: 'IER' },
-      { off: 0x0C, name: 'BRRI', note: '波特率整数分频' },
-      { off: 0x10, name: 'BRRF', note: '波特率小数分频' },
-      { off: 0x18, name: 'TIMCNT' },
-      { off: 0x1C, name: 'ISR', note: '状态（含 ORE/NE/PE/FE/TXBE/RXNE）' },
-      { off: 0x20, name: 'ICR' },
-      { off: 0x24, name: 'RDR', note: '接收数据（读后清 RXNE）' },
-      { off: 0x28, name: 'TDR' },
-      { off: 0x30, name: 'ADDR' }, { off: 0x34, name: 'MASK' }, { off: 0x38, name: 'CR3' }
-    ]
-  }
-];
-
-/** 读外设并解码（调试会话优先，CLI 兜底） */
+/** 读外设并解码（有调试会话只走 DAP 且运行态自动 pause→读→resume；无会话才走 CLI） */
 async function readPeripheralRegisters(key: string): Promise<{ peripheral: PeriphDef; rows: Array<{ name: string; offset: string; value: string; fields: Array<{ name: string; value: string }>; note?: string }>; error?: string }> {
-  const periph = PERIPHERAL_MAP.find(p => p.key === key);
-  if (!periph) return { peripheral: PERIPHERAL_MAP[0], rows: [], error: `未知外设 ${key}（可用: ${PERIPHERAL_MAP.map(p => p.key).join(', ')}）` };
+  const map = peripheralMap();
+  const periph = map.find(p => p.key === key);
+  if (!periph) {
+    return { peripheral: map[0] ?? { key: '', label: '', base: 0, span: 0, regs: [] }, rows: [], error: `未知外设 ${key}（当前家族可用: ${map.map(p => p.key).join(', ') || '该家族寄存器表为空'}）` };
+  }
+  if (periph.regs.length === 0) {
+    return { peripheral: periph, rows: [], error: `外设 ${key} 在当前家族(${getConfig().family.label})的解码表尚未加载` };
+  }
   const addrHex = `0x${periph.base.toString(16)}`;
-  let buf: Buffer | undefined;
-  const b64 = debugSession ? await readMemoryViaDap(addrHex, periph.span) : undefined;
-  if (b64) buf = Buffer.from(b64, 'base64');
-  else buf = await readMemoryViaCli(addrHex, periph.span);
-  if (!buf) return { peripheral: periph, rows: [], error: '读取失败：无调试会话且 CLI read 失败（MCU 未连接？）' };
-  const rows = periph.regs.map(r => {
-    const v = buf.length > r.off + 3 ? buf.readUInt32LE(r.off) : undefined;
+  const r = debugSession
+    ? await readMemoryForTools(addrHex, periph.span)
+    : { buf: await readMemoryViaCli(addrHex, periph.span) };
+  const buf = r.buf;
+  if (!buf) {
+    return { peripheral: periph, rows: [], error: r.error ?? '读取失败' };
+  }
+  const rows = periph.regs.map(reg => {
+    const v = buf.length > reg.off + 3 ? buf.readUInt32LE(reg.off) : undefined;
     const fields: Array<{ name: string; value: string }> = [];
-    if (v !== undefined && r.fields) {
-      for (const f of r.fields) {
+    if (v !== undefined && reg.fields) {
+      for (const f of reg.fields) {
         const fv = (v >>> f.lsb) & ((1 << (f.msb - f.lsb + 1)) - 1);
         fields.push({ name: f.name, value: f.decode ? f.decode(fv) : `0x${fv.toString(16)}` });
       }
     }
     return {
-      name: r.name,
-      offset: `+0x${r.off.toString(16).padStart(2, '0')}`,
+      name: reg.name,
+      offset: `+0x${reg.off.toString(16).padStart(2, '0')}`,
       value: v === undefined ? '----' : `0x${v.toString(16).padStart(8, '0')}`,
       fields,
-      note: r.note
+      note: reg.note
     };
   });
   return { peripheral: periph, rows };
@@ -988,7 +1126,8 @@ function checkEpoch(expected: unknown): void {
 const HARDWARE_MCP_TOOLS = new Set([
   'cw32_build', 'cw32_flash', 'cw32_reset', 'cw32_erase', 'cw32_clean',
   'cw32_example_select', 'cw32_memory_write', 'cw32_memory_read',
-  'cw32_registers_read', 'cw32_debug_start', 'cw32_debug_control', 'cw32_serial_open'
+  'cw32_registers_read', 'cw32_debug_start', 'cw32_debug_control', 'cw32_serial_open',
+  'cw32_chip_detect'
 ]);
 
 /* ------------------------------------------------------------
@@ -1015,7 +1154,7 @@ const API_ROUTES: ApiRoute[] = [
   { method: 'POST', path: '/api/flash {"path":"..."}', desc: '烧录（body 可省略 = 自动选产物；path 必须通过校验）' },
   { method: 'POST', path: '/api/reset', desc: '复位目标' },
   { method: 'POST', path: '/api/erase', desc: '全片擦除（--allow-erase-all）' },
-  { method: 'GET', path: '/api/memory?address=0x20000000&length=64', desc: '读内存（优先走调试会话，否则 CLI）' },
+  { method: 'GET', path: '/api/memory?address=0x20000000&length=64', desc: '读内存（会话存活只走 DAP，运行态自动 pause→读→resume；无会话走 CLI）' },
   { method: 'GET', path: '/api/debug/state', desc: '调试会话状态：PC/调用栈/变量' },
   { method: 'POST', path: '/api/debug/pause', desc: '暂停核心' },
   { method: 'POST', path: '/api/debug/continue', desc: '继续运行' },
@@ -1024,7 +1163,8 @@ const API_ROUTES: ApiRoute[] = [
   { method: 'POST', path: '/api/debug/step-out', desc: '单步步出（stepOut）' },
   { method: 'POST', path: '/api/debug/restart', desc: '复位并重新运行程序' },
   { method: 'POST', path: '/api/memory {"address":"0x20000000","hex":"00112233"}', desc: '写内存（4 字节对齐，需调试会话）' },
-  { method: 'GET', path: '/api/registers?name=sysctrl|gpioa|gpiob|uart1', desc: '外设寄存器读取+位段解码' },
+  { method: 'GET', path: '/api/registers?name=sysctrl', desc: '外设寄存器读取+位段解码（外设列表随家族）' },
+  { method: 'GET', path: '/api/detect?apply=1', desc: 'cw32-detect 出厂数字签名识别芯片（apply=1 时写入 chip 设置）' },
   { method: 'GET', path: '/api/diagnostics', desc: 'AI 诊断报告（文本）' },
   { method: 'GET', path: '/api/serial/ports', desc: '枚举可用串口' },
   { method: 'POST', path: '/api/serial/open {"path":"COM3","baudRate":115200}', desc: '打开串口监视' },
@@ -1209,14 +1349,16 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse): P
         json(res, 409, { ok: false, error: '未找到有效固件，请先 build（artifact 错误，不是 MCU 不在线）' });
         return;
       }
+      const sessionStopped = await releaseProbeForHardware('烧录');
       const output = await runCommandLogged(buildDownloadCommand(artifact), root, 180_000);
       const summary = await getProbeSummary(true);
       await updateDashboardView();
-      json(res, 200, { ok: true, flashed: artifact.filePath, kind: artifact.kind, mcu: summary.mcu, settingsEpoch, output: output.stdout.slice(-400) });
+      json(res, 200, { ok: true, flashed: artifact.filePath, kind: artifact.kind, mcu: summary.mcu, sessionStopped, settingsEpoch, output: output.stdout.slice(-400) });
       return;
     }
 
     if (route === '/api/reset' && method === 'POST') {
+      await releaseProbeForHardware('复位');
       await runCommandLogged(`probe-rs reset ${probeBaseArgs().join(' ')}`, process.cwd(), 60_000);
       await updateDashboardView();
       json(res, 200, { ok: true, mcu: 'online（reset 应答）' });
@@ -1224,6 +1366,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse): P
     }
 
     if (route === '/api/erase' && method === 'POST') {
+      await releaseProbeForHardware('全片擦除');
       await runCommandLogged(buildEraseCommand(), process.cwd(), 120_000);
       json(res, 200, { ok: true, erased: true });
       return;
@@ -1233,18 +1376,12 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse): P
       const addressNum = parseHexNumber(url.searchParams.get('address'), 0x20000000);
       const length = Math.max(1, Math.min(256, parseCount(url.searchParams.get('length'), 64)));
       const addrHex = `0x${addressNum.toString(16)}`;
-      let data: Buffer | undefined;
-      const b64 = debugSession ? await readMemoryViaDap(addrHex, length) : undefined;
-      if (b64) {
-        data = Buffer.from(b64, 'base64');
-      } else {
-        data = await readMemoryViaCli(addrHex, length);
-      }
-      if (!data) {
-        json(res, 503, { ok: false, error: '读内存失败：无调试会话且 CLI read 也失败（MCU 可能未连接）' });
+      const r = await readMemoryForTools(addrHex, length);
+      if (!r.buf) {
+        json(res, 503, { ok: false, error: r.error ?? '读内存失败（MCU 可能未连接）' });
         return;
       }
-      json(res, 200, { ok: true, address: addrHex, length: data.length, hex: data.toString('hex'), ascii: data.toString('latin1').replace(/[^\x20-\x7e]/g, '.') });
+      json(res, 200, { ok: true, address: addrHex, length: r.buf.length, paused: r.paused === true, hex: r.buf.toString('hex'), ascii: r.buf.toString('latin1').replace(/[^\x20-\x7e]/g, '.') });
       return;
     }
 
@@ -1311,6 +1448,17 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse): P
         base: `0x${result.peripheral.base.toString(16)}`,
         regs: result.rows
       });
+      return;
+    }
+
+    if (route === '/api/detect') {
+      const rep = await runChipDetect();
+      let appliedChip: string | undefined;
+      if (url.searchParams.get('apply') === '1' && rep.ok && rep.chip) {
+        await vscode.workspace.getConfiguration('cw32l012').update('chip', rep.chip, vscode.ConfigurationTarget.Workspace);
+        appliedChip = rep.chip;
+      }
+      json(res, rep.ok ? 200 : 503, { ...rep, appliedChip });
       return;
     }
 
@@ -1408,7 +1556,7 @@ async function startApiServer(): Promise<string> {
       ['POST', '/api/debug/pause'], ['POST', '/api/debug/continue'], ['POST', '/api/debug/step-over'],
       ['POST', '/api/debug/step-into'], ['POST', '/api/debug/step-out'], ['POST', '/api/debug/restart'],
       ['POST', '/api/memory'], ['POST', '/api/serial/open'], ['POST', '/api/examples/select'],
-      ['GET', '/api/memory'], ['GET', '/api/registers']
+      ['GET', '/api/memory'], ['GET', '/api/registers'], ['GET', '/api/detect']
     ];
     const u = new URL(req.url || '/', 'http://127.0.0.1');
     const m = (req.method || 'GET').toUpperCase();
@@ -1543,12 +1691,13 @@ async function runRebuild(): Promise<void> {
 
 async function eraseAll(): Promise<void> {
   const pick = await vscode.window.showWarningMessage(
-    '全片擦除会清除整个 FLASH（含所有页）。CW32L012 若启用了读保护，需先解锁。确定继续？',
+    '全片擦除会清除整个 FLASH（含所有页）。若启用了读保护，需先解锁。确定继续？',
     { modal: true }, '全片擦除'
   );
   if (pick !== '全片擦除') return;
+  await releaseProbeForHardware('全片擦除');
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'CW32L012: 全片擦除…', cancellable: false },
+    { location: vscode.ProgressLocation.Notification, title: 'CW32: 全片擦除…', cancellable: false },
     async () => {
       try {
         await runCommandLogged(buildEraseCommand(), process.cwd(), 120_000);
@@ -1565,6 +1714,8 @@ async function eraseAll(): Promise<void> {
 async function flashArtifact(artifact: FirmwareCandidate, root: string): Promise<void> {
   const command = buildDownloadCommand(artifact);
   logBoth(`[flash] 固件: ${artifact.filePath} (${artifact.kind.toUpperCase()})`);
+  // probe-rs download/verify/reset 与 dap-server 抢探针，先结束会话
+  await releaseProbeForHardware('烧录');
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: `烧录 ${path.basename(artifact.filePath)} …`, cancellable: false },
     async () => {
@@ -1649,8 +1800,9 @@ async function selectArtifact(): Promise<void> {
 }
 
 async function resetTarget(): Promise<void> {
+  await releaseProbeForHardware('复位');
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'CW32L012 复位中…', cancellable: false },
+    { location: vscode.ProgressLocation.Notification, title: 'CW32 复位中…', cancellable: false },
     async () => {
       try {
         await runCommandLogged(`probe-rs reset ${probeBaseArgs().join(' ')}`, process.cwd(), 60_000);
@@ -1692,10 +1844,12 @@ async function startDebugSession(): Promise<boolean> {
     vscode.window.showErrorMessage('调试需要有效 ELF 固件。当前未找到通过校验的 ELF，请先 Build（artifact 错误，不是 MCU 问题）。');
     return false;
   }
+  // 已有会话时先释放探针，避免新旧两个 dap-server 争抢
+  await releaseProbeForHardware('启动调试');
   const cfg = getConfig();
   const launch: vscode.DebugConfiguration = {
     type: DEBUG_TYPE,
-    name: 'CW32L012 Debug',
+    name: `${cfg.family.label} Debug`,
     request: 'launch',
     // probe-rs 0.32 dap-server launch 参数（0.32 起 coreConfigs[].program
     // 改名为 programBinary；camelCase 字段 0.32 全部接受）
@@ -1964,19 +2118,21 @@ const MCP_TOOLS: McpToolDef[] = [
   },
   {
     name: 'cw32_reset',
-    description: '复位目标 MCU（probe-rs reset）。复位有应答即 MCU 在线。',
+    description: '复位目标 MCU（probe-rs reset）。复位有应答即 MCU 在线。有调试会话时会先自动结束会话释放探针。',
     inputSchema: { type: 'object', properties: {} },
     handler: async () => {
+      const sessionStopped = await releaseProbeForHardware('复位');
       await runCommandLogged(`probe-rs reset ${probeBaseArgs().join(' ')}`, process.cwd(), 60_000);
       await updateDashboardView();
-      return { reset: true, mcu: 'online（reset 应答）' };
+      return { reset: true, mcu: 'online（reset 应答）', sessionStopped };
     }
   },
   {
     name: 'cw32_erase',
-    description: '全片擦除 FLASH（危险操作：清空固件）。擦除后需重新烧录。',
+    description: '全片擦除 FLASH（危险操作：清空固件）。擦除后需重新烧录。有调试会话时会先自动结束会话释放探针。',
     inputSchema: { type: 'object', properties: {} },
     handler: async () => {
+      await releaseProbeForHardware('全片擦除');
       await runCommandLogged(buildEraseCommand(), process.cwd(), 120_000);
       await updateDashboardView();
       return { erased: true };
@@ -2022,19 +2178,16 @@ const MCP_TOOLS: McpToolDef[] = [
   },
   {
     name: 'cw32_memory_read',
-    description: '读内存（调试会话优先，无会话走 probe-rs CLI）。常用地址：0x0=向量表(MSP)、0x20000000=SRAM、0x40004000=SYSCTRL。',
+    description: '读内存。有调试会话时只走 DAP（运行态自动 pause→读→resume，不与 dap-server 抢探针），无会话走 probe-rs CLI。常用地址：0x0=向量表(MSP)、0x20000000=SRAM、0x40004000=SYSCTRL(L012)。',
     inputSchema: { type: 'object', properties: { address: { type: 'string', description: '十六进制地址，如 0x20000000' }, length: { type: 'number', description: '字节数 1-256，默认 64' } }, required: ['address'] },
     handler: async a => {
       const addressNum = parseHexNumber(typeof a.address === 'string' ? a.address : undefined, NaN);
       if (Number.isNaN(addressNum)) throw new Error('address 需为十六进制，如 0x20000000');
       const length = Math.max(1, Math.min(256, parseCount(typeof a.length === 'number' ? String(a.length) : undefined, 64)));
       const addrHex = `0x${addressNum.toString(16)}`;
-      const b64 = debugSession ? await readMemoryViaDap(addrHex, length) : undefined;
-      let data: Buffer | undefined;
-      if (b64) data = Buffer.from(b64, 'base64');
-      else data = await readMemoryViaCli(addrHex, length);
-      if (!data) throw new Error('读内存失败：无调试会话且 CLI 读取失败（MCU 未连接？）');
-      return { address: addrHex, length: data.length, hex: data.toString('hex'), ascii: data.toString('latin1').replace(/[^\x20-\x7e]/g, '.') };
+      const r = await readMemoryForTools(addrHex, length);
+      if (!r.buf) throw new Error(r.error ?? '读内存失败');
+      return { address: addrHex, length: r.buf.length, paused: r.paused === true, hex: r.buf.toString('hex'), ascii: r.buf.toString('latin1').replace(/[^\x20-\x7e]/g, '.') };
     }
   },
   {
@@ -2052,8 +2205,8 @@ const MCP_TOOLS: McpToolDef[] = [
   },
   {
     name: 'cw32_registers_read',
-    description: '读外设寄存器并按位段解码（SYSCTRL 时钟 / GPIOA / GPIOB / UART1）。偏移与位段取自 HAL 核对过的寄存器表。',
-    inputSchema: { type: 'object', properties: { peripheral: { type: 'string', enum: ['sysctrl', 'gpioa', 'gpiob', 'uart1'], description: '外设名，默认 sysctrl' } } },
+    description: '读外设寄存器并按位段解码。外设列表由当前家族(cw32l012/cw32f030)的寄存器表决定，缺省 sysctrl。',
+    inputSchema: { type: 'object', properties: { peripheral: { type: 'string', enum: ['sysctrl'], description: '外设名，默认 sysctrl（实际枚举由 tools/list 按当前家族动态生成）' } } },
     handler: async a => {
       const result = await readPeripheralRegisters(String(a.peripheral ?? 'sysctrl').toLowerCase());
       if (result.error) throw new Error(result.error);
@@ -2145,6 +2298,20 @@ const MCP_TOOLS: McpToolDef[] = [
     description: '完整诊断报告（workspace/配置/probe/产物/调试/串口一页汇总），排查故障时用。',
     inputSchema: { type: 'object', properties: {} },
     handler: async () => ({ report: await collectDiagnostics() })
+  },
+  {
+    name: 'cw32_chip_detect',
+    description: '运行 cw32-detect 读出厂数字签名识别芯片（型号串/Flash/RAM/管脚/UID/probe-rs 目标名）。apply=true 时把识别到的芯片名写入 cw32l012.chip 设置。需 cw32-detect 可执行（github.com/SunWithCloude/cw32-probe-rs-compat）。',
+    inputSchema: { type: 'object', properties: { apply: { type: 'boolean', description: '把识别结果写入 chip 设置（默认 false）' } } },
+    handler: async a => {
+      const rep = await runChipDetect();
+      let appliedChip: string | undefined;
+      if (a.apply === true && rep.ok && rep.chip) {
+        await vscode.workspace.getConfiguration('cw32l012').update('chip', rep.chip, vscode.ConfigurationTarget.Workspace);
+        appliedChip = rep.chip; // 设置变更钩子会自动 bumpSettingsEpoch
+      }
+      return { ...rep, appliedChip };
+    }
   }
 ];
 
@@ -2159,7 +2326,18 @@ async function handleMcpMessage(msg: { jsonrpc?: string; id?: unknown; method?: 
   if (method === 'notifications/initialized' || method === 'notifications/cancelled' || method.startsWith('notifications/')) return undefined;
   if (method === 'ping') return { jsonrpc: '2.0', id, result: {} };
   if (method === 'tools/list') {
-    return { jsonrpc: '2.0', id, result: { tools: MCP_TOOLS.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })) } };
+    const tools = MCP_TOOLS.map(t => {
+      const def = { name: t.name, description: t.description, inputSchema: t.inputSchema };
+      // 寄存器外设枚举随当前家族动态生成（families.ts 按芯片提供）
+      if (t.name === 'cw32_registers_read') {
+        def.inputSchema = {
+          type: 'object',
+          properties: { peripheral: { type: 'string', enum: peripheralMap().map(p => p.key), description: '外设名，默认 sysctrl' } }
+        };
+      }
+      return def;
+    });
+    return { jsonrpc: '2.0', id, result: { tools } };
   }
   if (method === 'resources/list') return { jsonrpc: '2.0', id, result: { resources: [] } };
   if (method === 'prompts/list') return { jsonrpc: '2.0', id, result: { prompts: [] } };
@@ -2254,7 +2432,8 @@ async function collectDiagnostics(): Promise<string> {
   const debugState = await fetchDebugState();
 
   const report = [
-    'CW32L012 Debug Report',
+    `${cfg.family.label} Debug Report`,
+    `family: ${cfg.familyKey}（chip=${cfg.chip}${cfg.chipDescriptionPath ? `, yaml=${cfg.chipDescriptionPath}` : ', probe-rs 内置'}）`,
     `workspace: ${root}`,
     `target: ${cfg.target} (${cfg.profile})`,
     `cargo target_directory: ${info.targetDirectory}`,
@@ -2264,7 +2443,7 @@ async function collectDiagnostics(): Promise<string> {
     `mcu: ${summary.mcu} — ${summary.detail}`,
     `debug session: ${debugState.active ? `${debugState.sessionName} pc=${debugState.pc ?? '-'}` : '无'}`,
     `agent api: ${apiServer ? `http://127.0.0.1:${apiPortActive}` : '未启动'}`,
-    `flashBaseAddress: ${cfg.flashBaseAddress}（CW32L012 FLASH ORIGIN=0x0）`,
+    `flashBaseAddress: ${cfg.flashBaseAddress}（${cfg.family.label} FLASH ORIGIN=0x0）`,
     '',
     '结论指引:',
     '- probe=offline → USB/驱动/probe-rs 安装问题',
@@ -2509,6 +2688,24 @@ async function buildDashboardHtml(): Promise<string> {
   const state = await gatherDashState();
   const root = getWorkspaceRoot() ?? '未打开工作区';
   const logHtml = state.logs.map(esc).join('<br>') || '（暂无日志）';
+  // 家族参数化：外设下拉 / 内存预设随 family profile 生成
+  const periphOptions = peripheralMap()
+    .map(p => `<option value="${p.key}">${p.label}</option>`)
+    .join('');
+  const findPeriph = (key: string) => peripheralMap().find(p => p.key === key);
+  const hexAddr = (n: number) => n.toString(16).toUpperCase().padStart(8, '0');
+  const sysctrl = findPeriph('sysctrl');
+  const gpioa = findPeriph('gpioa');
+  const uart1 = findPeriph('uart1');
+  const memPresets = [
+    `<option value="${cfg.family.ramBase.replace('0x', '')}">SRAM ${cfg.family.ramBase}</option>`,
+    `<option value="00000000">FLASH/向量表 0x0</option>`,
+    sysctrl ? `<option value="${hexAddr(sysctrl.base)}">SYSCTRL 0x${hexAddr(sysctrl.base)}</option>` : '',
+    gpioa ? `<option value="${hexAddr(gpioa.base)}">GPIOA 0x${hexAddr(gpioa.base)}</option>` : '',
+    uart1 ? `<option value="${hexAddr(uart1.base)}">UART1 0x${hexAddr(uart1.base)}</option>` : '',
+    `<option value="E000E000">SysTick 0xE000E000</option>`,
+    `<option value="custom">自定义…</option>`
+  ].filter(Boolean).join('');
 
   return `<!DOCTYPE html>
 <html lang="zh">
@@ -2589,7 +2786,7 @@ async function buildDashboardHtml(): Promise<string> {
 <body>
   <div class="console">
     <div class="topbar">
-      <div class="brand"><span class="brand-dot"></span><span>CW32L012</span></div>
+      <div class="brand"><span class="brand-dot"></span><span>${esc(cfg.family.label)}</span></div>
       <div class="status-pill ${state.statusClass}" id="status-pill">${esc(state.statusText)}</div>
     </div>
     <div class="content">
@@ -2661,18 +2858,15 @@ async function buildDashboardHtml(): Promise<string> {
         </div>
         <div class="pane">
           <div class="pane-head">
-            <span>外设寄存器（位段解码）</span>
+            <span>外设寄存器（位段解码 · ${esc(cfg.family.label)}）</span>
             <span class="mem-controls">
               <select id="periph-select">
-                <option value="sysctrl">SYSCTRL 时钟</option>
-                <option value="gpioa">GPIOA</option>
-                <option value="gpiob">GPIOB</option>
-                <option value="uart1">UART1</option>
+                ${periphOptions}
               </select>
               <button class="mini-btn" id="periph-read">读取</button>
             </span>
           </div>
-          <div class="pane-body" id="periph-body"><div class="dim">选择外设后点读取（无调试会话时走 probe-rs CLI）。偏移与位段取自 HAL pac.rs</div></div>
+          <div class="pane-body" id="periph-body"><div class="dim">选择外设后点读取（有调试会话走 DAP，无会话走 probe-rs CLI）。偏移与位段取自 ${esc(cfg.family.label)} 寄存器表</div></div>
         </div>
       </div>
 
@@ -2682,15 +2876,9 @@ async function buildDashboardHtml(): Promise<string> {
             <span>内存视图</span>
             <span class="mem-controls">
               <select id="mem-preset" title="内存区预设">
-                <option value="20000000">SRAM 0x20000000</option>
-                <option value="00000000">FLASH/向量表 0x0</option>
-                <option value="40004000">SYSCTRL 0x40004000</option>
-                <option value="48000000">GPIOA 0x48000000</option>
-                <option value="40000C00">UART1 0x40000C00</option>
-                <option value="E000E000">SysTick 0xE000E000</option>
-                <option value="custom">自定义…</option>
+                ${memPresets}
               </select>
-              <input id="mem-addr" placeholder="20000000" value="20000000" />
+              <input id="mem-addr" placeholder="${cfg.family.ramBase.replace('0x', '')}" value="${cfg.family.ramBase.replace('0x', '')}" />
               <select id="mem-len"><option>32</option><option selected>64</option><option>128</option><option>256</option></select>
               <button class="mini-btn" id="mem-read">读取</button>
               <span style="margin-left:8px"></span>
@@ -2718,6 +2906,8 @@ async function buildDashboardHtml(): Promise<string> {
             <div class="cmd-row"><code>curl "http://127.0.0.1:${cfg.apiPort}/api/memory?address=20000000&amp;length=64"</code><button class="mini-btn" data-copy="curl &quot;http://127.0.0.1:${cfg.apiPort}/api/memory?address=20000000&amp;length=64&quot;">复制</button></div>
             <div class="cmd-row"><code>curl http://127.0.0.1:${cfg.apiPort}/api/debug/state</code><button class="mini-btn" data-copy="curl http://127.0.0.1:${cfg.apiPort}/api/debug/state">复制</button></div>
             <div class="cmd-row"><code>curl http://127.0.0.1:${cfg.apiPort}/api/serial/tail</code><button class="mini-btn" data-copy="curl http://127.0.0.1:${cfg.apiPort}/api/serial/tail">复制</button></div>
+            <div class="cmd-row"><code>curl "http://127.0.0.1:${cfg.apiPort}/api/detect?apply=1"</code><button class="mini-btn" data-copy="curl &quot;http://127.0.0.1:${cfg.apiPort}/api/detect?apply=1&quot;">复制</button></div>
+            MCP(SSE) 接入: <code>http://127.0.0.1:${cfg.mcpPort}/sse</code>（19 个工具） <button class="mini-btn" data-command="cw32l012.generateMcpJson">生成 .mcp.json</button><br>
             全部端点: <code>GET /</code> ；鉴权: <code>x-cw32-token</code> 头（设置了 cw32l012.apiToken 时）
           </div>
         </div>
@@ -2777,6 +2967,7 @@ async function handleWebviewMessage(message: { command?: string; address?: strin
     case 'cw32l012.eraseAll': await humanLease('全片擦除', eraseAll); break;
     case 'cw32l012.reset': await humanLease('reset', resetTarget); break;
     case 'cw32l012.checkStatus': await checkStatus(); break;
+    case 'cw32l012.generateMcpJson': await generateMcpJson(); break;
     case 'cw32l012.monitor': await humanLease('串口监视', openSerialMonitor); break;
     case 'cw32l012.serialSend': await serialSendLine(); break;
     case 'cw32l012.debug': await humanLease('启动调试', startDebugSession); break;
@@ -2890,7 +3081,7 @@ export function activate(context: vscode.ExtensionContext): void {
   register('cw32l012.setSourceDir', () => humanLease('切换源目录', setSourceDir));
   register('cw32l012.eraseAll', () => humanLease('全片擦除', eraseAll));
   register('cw32l012.reset', () => humanLease('reset', resetTarget));
-  register('cw32l012.checkStatus', checkStatus);
+  register('cw32l012.checkStatus', () => humanLease('状态检测', checkStatus));
   register('cw32l012.monitor', () => humanLease('串口监视', openSerialMonitor));
   register('cw32l012.serialSend', serialSendLine);
   register('cw32l012.debug', () => humanLease('启动调试', startDebugSession));
@@ -2906,6 +3097,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   register('cw32l012.aiSummary', () => collectDiagnostics());
   register('cw32l012.showDashboard', showDashboard);
+  register('cw32l012.generateMcpJson', generateMcpJson);
   register('cw32l012.apiToggle', () => (apiServer ? stopApiServer() : startApiServer()));
   register('cw32l012.mcpToggle', () => (mcpServer ? Promise.resolve(stopMcpServer()) : startMcpServer()));
   register('cw32l012.apiStart', startApiServer);
@@ -2931,7 +3123,7 @@ export function activate(context: vscode.ExtensionContext): void {
           const cfg = getConfig();
           const launch: vscode.DebugConfiguration = {
             type: DEBUG_TYPE,
-            name: 'CW32L012 Debug',
+            name: `${cfg.family.label} Debug`,
             request: 'launch',
             chip: cfg.chip,
             probe: cfg.probeId,

@@ -2,7 +2,7 @@
   "name": "cw32l012-tools",
   "displayName": "CW32L012 Tools",
   "description": "Build, flash, visually debug, and AI-drive CW32L012 projects with a probe-rs + DAPLink workflow.",
-  "version": "0.6.7",
+  "version": "0.7.0",
   "publisher": "cw32l012",
   "repository": {
     "type": "git",
@@ -48,6 +48,11 @@
       }
     ],
     "commands": [
+      {
+        "command": "cw32l012.generateMcpJson",
+        "title": "CW32: 生成 .mcp.json（MCP 客户端接入）",
+        "category": "CW32L012"
+      },
       {
         "command": "cw32l012.showDashboard",
         "title": "CW32L012: Open dashboard"
@@ -250,7 +255,22 @@
         "cw32l012.chip": {
           "type": "string",
           "default": "CW32L012x8",
-          "description": "Chip name for probe-rs when using the official CW32L0 family metadata."
+          "description": "Chip name for probe-rs (e.g. CW32L012x8 / CW32F030C8). cw32-detect can fill this automatically."
+        },
+        "cw32l012.family": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "cw32l012",
+            "cw32f030"
+          ],
+          "description": "CW32 family profile: selects the register map, presets and default target YAML. 'auto' derives it from the chip name prefix."
+        },
+        "cw32l012.detectPath": {
+          "type": "string",
+          "default": "cw32-detect",
+          "description": "Path or command name of cw32-detect (factory digital-signature chip detector, github.com/SunWithCloude/cw32-probe-rs-compat). Used by /api/detect and the cw32_chip_detect tool."
         },
         "cw32l012.chipDescriptionPath": {
           "type": "string",

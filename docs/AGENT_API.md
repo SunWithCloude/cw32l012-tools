@@ -47,9 +47,10 @@ curl -s "http://127.0.0.1:3678/api/memory?address=0x0&length=8"
 | POST | `/api/flash` | 烧录；body 可带 `{"path":"..."}` 指定产物、`{"expectedEpoch":N}` 乐观锁 | `{ ok, flashed, kind, mcu, settingsEpoch, output }` |
 | POST | `/api/reset` | `probe-rs reset`（同时也是 MCU 在线判据） | `{ ok, mcu: "online（reset 应答）" }` |
 | POST | `/api/erase` | 全片擦除（`probe-rs erase --allow-erase-all`） | `{ ok, erased: true }` |
-| GET | `/api/memory` | 读内存：`?address=0x20000000&length=64`（length 1–256；占租约） | `{ ok, address, length, hex, ascii }` |
+| GET | `/api/memory` | 读内存：`?address=0x20000000&length=64`（length 1–256；占租约）。**0.7 起会话存活期间只走 DAP**（运行态失败自动 pause→读→resume），无会话走 probe-rs CLI | `{ ok, address, length, paused, hex, ascii }` |
 | POST | `/api/memory` | 写内存：body `{"address":"0x20000000","hex":"00112233"}`（4 字节对齐，需调试会话） | `{ ok, address, bytesWritten }` |
-| GET | `/api/registers?name=sysctrl` | 外设寄存器读取 + 位段解码（sysctrl/gpioa/gpiob/uart1；占租约） | `{ ok, peripheral, label, base, regs: [{ name, offset, value, fields }] }` |
+| GET | `/api/registers?name=sysctrl` | 外设寄存器读取 + 位段解码（外设列表随 `cw32l012.family`：L012=sysctrl/gpioa/gpiob/gpioc/gpiof/uart1，F030=sysctrl/gpioa/gpiob/gpioc/uart1；占租约） | `{ ok, peripheral, label, base, regs: [{ name, offset, value, fields }] }` |
+| GET | `/api/detect?apply=1` | **0.7+** 运行 cw32-detect 读出厂数字签名识别芯片（型号串/Flash/RAM/管脚/UID/probe-rs 目标名）；`apply=1` 把识别到的芯片名写入 `cw32l012.chip`。需安装 cw32-detect（github.com/SunWithCloude/cw32-probe-rs-compat）或用 `cw32l012.detectPath` 指向它；占租约 | `{ ok, chip, type_string, flash, ram, pins, uid, match, appliedChip }` |
 | GET | `/api/debug/state` | 调试会话状态：PC / 调用栈 / 变量 | `{ ok, debug: { active, sessionName, pc, frames, variables } }` |
 | POST | `/api/debug/pause` | 暂停核心 | `{ ok, paused: true }` |
 | POST | `/api/debug/continue` | 继续运行 | `{ ok, running: true }` |

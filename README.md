@@ -37,6 +37,9 @@ AI agent or a script can drive the same hardware workflow.
 | Serial monitor | **In-panel implementation** (no external tool), with line send | Done |
 | Agent API | localhost HTTP JSON for AI / scripts — see `docs/AGENT_API.md` | Done |
 | MCP server | SSE transport, 19 tools over the hardware workflow | Done |
+| Multi-family | `cw32l012.family` profiles (CW32L012 / CW32F030): per-family register decode maps, memory presets and the bundled `tools/families/CW32F030_Series.yaml` target (byte-identical to upstream probe-rs PR #4549) — no manual chip-description config needed | Done |
+| Chip auto-detect | `cw32_chip_detect` tool / `GET /api/detect` runs [cw32-detect](https://github.com/SunWithCloude/cw32-probe-rs-compat) (factory digital-signature reader) and can auto-fill the `chip` setting | Done |
+| Probe exclusivity | While a debug session is alive, all reads go through DAP (auto pause→read→resume when running); hardware ops (flash/erase/reset/detect) stop the session first — the CLI-vs-dap-server probe contention that silently killed sessions in 0.6.x is gone | Done |
 | Status bar, example picker, post-flash verify, standalone clean | — | Done |
 
 Deeper docs (currently Chinese):
@@ -137,6 +140,7 @@ away by context.
 | `CW32L012: Start/stop Agent API` | Toggle the HTTP API (also `start` / `stop`) |
 | `CW32L012: Toggle embedded MCP server` | Start/stop the SSE MCP server |
 | `CW32L012: Set source directory` | Write `workspaceRoot`; empty restores auto-detection |
+| `CW32L012: Generate .mcp.json` | Write the correct MCP client config for the embedded MCP server into the workspace |
 
 ## Settings (`cw32l012.*`)
 
