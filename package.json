@@ -49,6 +49,11 @@
     ],
     "commands": [
       {
+        "command": "cw32l012.detectChip",
+        "title": "CW32: 识别芯片（cw32-detect 出厂数字签名）",
+        "category": "CW32L012"
+      },
+      {
         "command": "cw32l012.generateMcpJson",
         "title": "CW32: 生成 .mcp.json（MCP 客户端接入）",
         "category": "CW32L012"

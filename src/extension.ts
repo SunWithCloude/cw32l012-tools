@@ -930,8 +930,22 @@ interface DetectReport {
   raw?: string;
 }
 
+/** 最近一次 cw32-detect 识别结果（仪表盘「Chip」卡片显示，成功失败都记） */
+let lastDetectReport: DetectReport | undefined;
+
 /** 运行 cw32-detect --json（需独占探针，会自动结束活动调试会话） */
 async function runChipDetect(): Promise<DetectReport> {
+  const rep = await runChipDetectOnce();
+  lastDetectReport = rep;
+  if (rep.ok && rep.chip) {
+    logBoth(`[detect] ${rep.type_string ?? '?'} → ${rep.chip}（${rep.match ?? '-'}）`);
+  } else {
+    logBoth(`[detect] 识别失败: ${(rep.raw ?? '').split('\n')[0]}`);
+  }
+  return rep;
+}
+
+async function runChipDetectOnce(): Promise<DetectReport> {
   await releaseProbeForHardware('cw32-detect 识别');
   const exe = getConfig().detectPath || DEFAULT_DETECT_PATH;
   let out = '';
@@ -2471,6 +2485,8 @@ interface DashState {
   statusClass: string;
   probe: string;
   mcu: string;
+  chip: string;
+  detected: string;
   firmware: string;
   sourceDir: string;
   sourceDirOverride: boolean;
@@ -2496,6 +2512,12 @@ async function gatherDashState(): Promise<DashState> {
     statusClass: summary.probe === 'offline' ? 'pill-off' : summary.mcu === 'online' ? 'pill-ok' : 'pill-warn',
     probe: summary.device,
     mcu: summary.probe === 'offline' ? '—' : summary.mcu === 'online' ? '在线' : summary.mcu === 'unreachable' ? '无应答' : '未检测',
+    chip: cfg.chip,
+    detected: lastDetectReport
+      ? (lastDetectReport.ok && lastDetectReport.chip
+        ? `${lastDetectReport.type_string ?? '?'} → ${lastDetectReport.chip}`
+        : `识别失败: ${(lastDetectReport.raw ?? '').split('\n')[0].slice(0, 60)}`)
+      : '',
     firmware: artifact ? `${path.basename(artifact.filePath)} (${artifact.kind.toUpperCase()})` : '无有效固件 — 请先 Build',
     sourceDir: root ?? '未定位 — 打开工作区或点「切换」手动指定',
     sourceDirOverride: !!cfg.workspaceRoot,
@@ -2723,6 +2745,7 @@ async function buildDashboardHtml(): Promise<string> {
   .console { border-radius:14px; overflow:hidden; border:1px solid var(--line); background:linear-gradient(180deg,rgba(15,15,15,0.98),rgba(22,18,14,0.98)); }
   .topbar { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); }
   .brand { display:flex; align-items:center; gap:10px; letter-spacing:0.22em; text-transform:uppercase; font-size:10px; color:var(--gold-soft); font-weight:700; }
+  .brand .chip-sub { color:var(--muted); font-weight:400; letter-spacing:0.08em; }
   .brand-dot { width:10px; height:10px; border-radius:50%; background:var(--green); box-shadow:0 0 10px var(--green); }
   .status-pill { padding:6px 10px; border-radius:999px; border:1px solid var(--line); letter-spacing:0.12em; text-transform:uppercase; font-size:9px; }
   .pill-ok { color:var(--green); border-color:rgba(90,212,106,0.5); background:rgba(90,212,106,0.08); }
@@ -2786,13 +2809,14 @@ async function buildDashboardHtml(): Promise<string> {
 <body>
   <div class="console">
     <div class="topbar">
-      <div class="brand"><span class="brand-dot"></span><span>${esc(cfg.family.label)}</span></div>
+      <div class="brand"><span class="brand-dot"></span><span>${esc(cfg.family.label)}</span><span class="chip-sub">${esc(cfg.chip)}</span></div>
       <div class="status-pill ${state.statusClass}" id="status-pill">${esc(state.statusText)}</div>
     </div>
     <div class="content">
       <div class="metrics">
         <div class="metric" data-command="cw32l012.checkStatus" title="点击：深度检测 probe / MCU 状态"><div class="metric-label">Probe ↯</div><div class="metric-value" id="m-probe">${esc(state.probe)}</div></div>
         <div class="metric" data-command="cw32l012.reset" title="点击：复位目标（probe-rs reset）"><div class="metric-label">MCU ↯</div><div class="metric-value" id="m-mcu">${esc(state.mcu)}</div></div>
+        <div class="metric" data-command="cw32l012.detectChip" title="点击：cw32-detect 读出厂数字签名识别芯片（会先结束调试会话独占探针）"><div class="metric-label">Chip ↯</div><div class="metric-value" id="m-chip">${esc(state.detected || state.chip)}</div></div>
         <div class="metric" data-command="cw32l012.selectArtifact" title="点击：指定烧录产物（默认自动选最新）"><div class="metric-label">Firmware ↯</div><div class="metric-value" id="m-fw">${esc(state.firmware)}</div></div>
         <div class="metric" data-command="cw32l012.monitor" title="点击：打开 / 切换串口"><div class="metric-label">Serial ↯</div><div class="metric-value" id="m-serial">${state.serialOpen ? esc(state.serialPath ?? '') + ' @ ' + state.serialBaud : 'CLOSED'}</div></div>
         <div class="metric" data-command="cw32l012.apiToggle" title="点击：启停 Agent API"><div class="metric-label">Agent API ↯</div><div class="metric-value" id="m-api">${state.apiRunning ? 'RUNNING :' + state.apiPort : 'STOPPED'}</div></div>
@@ -2967,6 +2991,7 @@ async function handleWebviewMessage(message: { command?: string; address?: strin
     case 'cw32l012.eraseAll': await humanLease('全片擦除', eraseAll); break;
     case 'cw32l012.reset': await humanLease('reset', resetTarget); break;
     case 'cw32l012.checkStatus': await checkStatus(); break;
+    case 'cw32l012.detectChip': await humanLease('芯片识别', runChipDetect); await updateDashboardView(); break;
     case 'cw32l012.generateMcpJson': await generateMcpJson(); break;
     case 'cw32l012.monitor': await humanLease('串口监视', openSerialMonitor); break;
     case 'cw32l012.serialSend': await serialSendLine(); break;
@@ -3097,6 +3122,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   register('cw32l012.aiSummary', () => collectDiagnostics());
   register('cw32l012.showDashboard', showDashboard);
+  register('cw32l012.detectChip', () => humanLease('芯片识别', runChipDetect));
   register('cw32l012.generateMcpJson', generateMcpJson);
   register('cw32l012.apiToggle', () => (apiServer ? stopApiServer() : startApiServer()));
   register('cw32l012.mcpToggle', () => (mcpServer ? Promise.resolve(stopMcpServer()) : startMcpServer()));
