@@ -1,4 +1,4 @@
-# CW32L012 Tools 使用者手册
+# CW32 Tools 使用者手册
 
 面向使用者的界面说明：仪表盘布局、三步工作流、调试/内存面板、例程选择与串口监视。
 Agent / AI 集成（HTTP API、MCP）见 [AGENT_API.md](AGENT_API.md)；版本历史见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。
@@ -7,8 +7,8 @@ Agent / AI 集成（HTTP API、MCP）见 [AGENT_API.md](AGENT_API.md)；版本�
 
 ## 1. 活动栏与状态栏
 
-- 活动栏 **CW32L012** 图标 → 侧边栏仪表盘（`CW32L012 Console`）。
-- 状态栏常驻 `$(chip) CW32L012: MCU 在线`（绿）/ `探针离线`（灰）/ `MCU 无应答`（红），
+- 活动栏 **CW32** 图标 → 侧边栏仪表盘（`CW32 Console`）。
+- 状态栏常驻 `$(chip) CW32: MCU 在线`（绿）/ `探针离线`（灰）/ `MCU 无应答`（红），
   点击直达仪表盘。5s 轻量刷新（probe-rs list），不做 reset 级检测。
 
 ## 2. 仪表盘布局（自上而下）
@@ -24,7 +24,7 @@ Agent / AI 集成（HTTP API、MCP）见 [AGENT_API.md](AGENT_API.md)；版本�
 | 内存视图 | hex + ASCII 双栏渲染 | 预设下拉（SRAM/向量表/SYSCTRL/GPIOA/UART1/SysTick）或手输地址；读取 / 写入（写需调试会话） |
 | System log | 最近 20 条操作日志 | 只读 |
 | Agent API 面板 | 常用 curl 示例 + 一键复制 | 只读 |
-| 串口监视面板 | 接收数据流（与输出通道 `CW32L012 Serial` 同源） | 只读，发送见③卡 |
+| 串口监视面板 | 接收数据流（与输出通道 `CW32 Serial` 同源） | 只读，发送见③卡 |
 
 ## 3. 三步工作流
 

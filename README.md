@@ -1,4 +1,4 @@
-# CW32L012 Tools
+# CW32 Tools
 
 **English** | [简体中文](README.zh-CN.md)
 
@@ -15,7 +15,7 @@ AI agent or a script can drive the same hardware workflow.
 > inspect. It deliberately contains **no code editing**: writing, completion and
 > diagnostics belong to VS Code + rust-analyzer.
 
-- Version `0.6.7`
+- Version `0.9.0`
 - Hardware path: ST-LINK `0483:3748` over SWD, `probe-rs` 0.32
 - Target: `CW32L012x8` (built into probe-rs; no external YAML needed)
 - Debug backend: `probe-rs dap-server` → native VS Code breakpoints, stepping and
@@ -74,16 +74,16 @@ probe-rs chip list | grep CW32L0      # 0.32+ ships the CW32L0 series
 
 ```bash
 # from a packaged VSIX
-code --install-extension cw32-tools-0.6.7.vsix
+code --install-extension cw32-tools-0.9.0.vsix
 
 # or build it yourself
 npm ci && npm run compile
 npx @vscode/vsce package
-code --install-extension cw32-tools-0.6.7.vsix
+code --install-extension cw32-tools-0.9.0.vsix
 ```
 
 Or use the Extensions view → `...` → *Install from VSIX…*. After installation,
-open the **CW32L012** icon in the activity bar to reach the dashboard.
+open the **CW32** icon in the activity bar to reach the dashboard.
 
 Then **open a Rust workspace containing `Cargo.toml`** (for example
 [`Rust_Cw32L012`](https://github.com/SunWithCloude/Rust_Cw32L012), the companion
@@ -95,7 +95,7 @@ with `cw32.workspaceRoot` or the *Source directory* field in the dashboard.
 ## Quick start: Build → Flash → Debug
 
 1. **Build** — click *Build firmware* in the dashboard (or
-   `CW32L012: Build firmware` from the command palette). The extension runs
+   `CW32: Build firmware` from the command palette). The extension runs
    `cargo clean` then `cargo build --target thumbv6m-none-eabi --examples`;
    artifacts land in `target/thumbv6m-none-eabi/debug/examples/` (extension-less
    ELF files such as `blink_pc13`).
@@ -121,26 +121,26 @@ away by context.
 
 | Command | Purpose |
 |---|---|
-| `CW32L012: Open dashboard` | Open the dashboard panel |
-| `CW32L012: Build firmware` | Selected example → incremental build; auto mode → clean + build all examples |
-| `CW32L012: Rebuild` | clean + build, ignoring the example selection |
-| `CW32L012: Clean build output` | `cargo clean` only |
-| `CW32L012: Select example` | Pick the cargo example / target (Keil-style target dropdown) |
-| `CW32L012: Flash via DAPLink` | Flash, auto-selecting the artifact |
-| `CW32L012: Select firmware to flash` | Choose from the verified artifact list |
-| `CW32L012: Erase all` | `probe-rs erase --allow-erase-all` (modal confirm) |
-| `CW32L012: Start SWD debug session` | Flash + start the DAP session |
-| `CW32L012: Debug — pause / continue / step over / step into / step out / restart` | Fine-grained control of the active DAP session |
-| `CW32L012: Debug — stop session` | End the DAP session |
-| `CW32L012: Deep check probe / MCU` | reset-level MCU liveness check |
-| `CW32L012: Reset target` | `probe-rs reset` |
-| `CW32L012: Open serial monitor` | In-panel serial monitor |
-| `CW32L012: Serial send` | Send one line to the port |
-| `CW32L012: AI diagnostic report` | Collect diagnostics and copy to clipboard |
-| `CW32L012: Start/stop Agent API` | Toggle the HTTP API (also `start` / `stop`) |
-| `CW32L012: Toggle embedded MCP server` | Start/stop the SSE MCP server |
-| `CW32L012: Set source directory` | Write `workspaceRoot`; empty restores auto-detection |
-| `CW32L012: Generate .mcp.json` | Write the correct MCP client config for the embedded MCP server into the workspace |
+| `CW32: Open dashboard` | Open the dashboard panel |
+| `CW32: Build firmware` | Selected example → incremental build; auto mode → clean + build all examples |
+| `CW32: Rebuild` | clean + build, ignoring the example selection |
+| `CW32: Clean build output` | `cargo clean` only |
+| `CW32: Select example` | Pick the cargo example / target (Keil-style target dropdown) |
+| `CW32: Flash via DAPLink` | Flash, auto-selecting the artifact |
+| `CW32: Select firmware to flash` | Choose from the verified artifact list |
+| `CW32: Erase all` | `probe-rs erase --allow-erase-all` (modal confirm) |
+| `CW32: Start SWD debug session` | Flash + start the DAP session |
+| `CW32: Debug — pause / continue / step over / step into / step out / restart` | Fine-grained control of the active DAP session |
+| `CW32: Debug — stop session` | End the DAP session |
+| `CW32: Deep check probe / MCU` | reset-level MCU liveness check |
+| `CW32: Reset target` | `probe-rs reset` |
+| `CW32: Open serial monitor` | In-panel serial monitor |
+| `CW32: Serial send` | Send one line to the port |
+| `CW32: AI diagnostic report` | Collect diagnostics and copy to clipboard |
+| `CW32: Start/stop Agent API` | Toggle the HTTP API (also `start` / `stop`) |
+| `CW32: Toggle embedded MCP server` | Start/stop the SSE MCP server |
+| `CW32: Set source directory` | Write `workspaceRoot`; empty restores auto-detection |
+| `CW32: Generate .mcp.json` | Write the correct MCP client config for the embedded MCP server into the workspace |
 
 ## Settings (`cw32.*`)
 

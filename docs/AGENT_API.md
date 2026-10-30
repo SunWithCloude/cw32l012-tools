@@ -1,4 +1,4 @@
-# CW32L012 Tools — Agent / AI 集成专篇
+# CW32 Tools — Agent / AI 集成专篇
 
 本插件内置 **Agent API**：一个只监听 `127.0.0.1` 的 HTTP JSON 服务（默认端口 `3678`）。AI 助手（如 Claude Code）、CI 脚本、自定义工具都可以直接 curl 驱动「构建 → 烧录 → 复位 → 读内存 → 调试暂停/继续」整条硬件链路，与人类操作员看到的是同一份状态。
 
@@ -64,7 +64,7 @@ curl -s "http://127.0.0.1:3678/api/memory?address=0x0&length=8"
 | GET | `/api/diagnostics` | AI 诊断报告（文本） | `{ ok, report }` |
 | GET | `/api/logs` | 最近 60 条日志 | `{ ok, logs: [...] }` |
 
-约定：所有成功响应 `ok: true`；错误响应 `ok: false` + `error` 字符串，并带对应 HTTP 状态码。`GET /api/status?deep=1` 返回的 `note` 字段明确提示：**CW32L012 FLASH ORIGIN=0x00000000；probe 在线 ≠ MCU 在线，mcu 字段以 reset 交互为准**。
+约定：所有成功响应 `ok: true`；错误响应 `ok: false` + `error` 字符串，并带对应 HTTP 状态码。`GET /api/status?deep=1` 返回的 `note` 字段明确提示：**CW32 FLASH ORIGIN=0x00000000；probe 在线 ≠ MCU 在线，mcu 字段以 reset 交互为准**。
 
 ---
 
@@ -163,14 +163,14 @@ curl -s "http://127.0.0.1:3678/api/status?token=mysecret"
 
 | API 端点 | 对应命令 / 仪表盘动作 |
 |---|---|
-| `POST /api/build` | `CW32L012: Build firmware` / 仪表盘「固件构建」 |
-| `POST /api/flash` | `CW32L012: Flash via DAPLink` / 「烧录」 |
-| `POST /api/flash {"path":...}` | `CW32L012: 选择固件烧录` |
+| `POST /api/build` | `CW32: Build firmware` / 仪表盘「固件构建」 |
+| `POST /api/flash` | `CW32: Flash via DAPLink` / 「烧录」 |
+| `POST /api/flash {"path":...}` | `CW32: 选择固件烧录` |
 | `POST /api/erase` | （0.6.0 起并入命令面板） |
 | `GET /api/memory` | 仪表盘「内存视图」 |
 | `GET /api/debug/state` | 仪表盘「可视化调试」面板 |
 | `POST /api/debug/pause` / `continue` | 仪表盘 暂停/继续 按钮 |
-| `GET /api/status` | `CW32L012: 深度检测 probe / MCU 状态`（deep=1） |
+| `GET /api/status` | `CW32: 深度检测 probe / MCU 状态`（deep=1） |
 
 ---
 
@@ -179,7 +179,7 @@ curl -s "http://127.0.0.1:3678/api/status?token=mysecret"
 - **长任务**：`/api/build` 可长达 10 分钟、`/api/flash` 3 分钟。客户端 curl 请设足够超时（如 `--max-time 620`），不要过早判死。
 - **并发**：API 内部串行执行命令；并发发多个烧录/构建会排队。
 - **端口占用**：`apiPort` 被占用时插件会提示 API 启动失败；改 `cw32.apiPort` 或停用其他占用进程。
-- **apiAutoStart=false** 时需手动执行 `CW32L012: 启动 Agent API` 才能连上。
+- **apiAutoStart=false** 时需手动执行 `CW32: 启动 Agent API` 才能连上。
 
 ---
 

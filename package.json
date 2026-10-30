@@ -1,7 +1,7 @@
 {
   "name": "cw32-tools",
   "displayName": "CW32 Tools",
-  "description": "Build, flash, visually debug, and AI-drive CW32L012 projects with a probe-rs + DAPLink workflow.",
+  "description": "Build, flash, visually debug, and AI-drive CW32 projects with a probe-rs + DAPLink workflow.",
   "version": "0.9.0",
   "publisher": "cw32",
   "repository": {
@@ -26,7 +26,7 @@
       "activitybar": [
         {
           "id": "cw32",
-          "title": "CW32L012",
+          "title": "CW32",
           "icon": "$(debug-alt)"
         }
       ]
@@ -51,122 +51,122 @@
       {
         "command": "cw32.detectChip",
         "title": "CW32: 识别芯片（cw32-detect 出厂数字签名）",
-        "category": "CW32L012"
+        "category": "CW32"
       },
       {
         "command": "cw32.generateMcpJson",
         "title": "CW32: 生成 .mcp.json（MCP 客户端接入）",
-        "category": "CW32L012"
+        "category": "CW32"
       },
       {
         "command": "cw32.showDashboard",
-        "title": "CW32L012: Open dashboard"
+        "title": "CW32: Open dashboard"
       },
       {
         "command": "cw32.build",
-        "title": "CW32L012: Build firmware (cargo clean + build)"
+        "title": "CW32: Build firmware (cargo clean + build)"
       },
       {
         "command": "cw32.rebuild",
-        "title": "CW32L012: 重新构建 (clean + build)"
+        "title": "CW32: 重新构建 (clean + build)"
       },
       {
         "command": "cw32.clean",
-        "title": "CW32L012: 清理构建产物 (cargo clean)"
+        "title": "CW32: 清理构建产物 (cargo clean)"
       },
       {
         "command": "cw32.selectExample",
-        "title": "CW32L012: 选择例程 / 目标 (Select example)"
+        "title": "CW32: 选择例程 / 目标 (Select example)"
       },
       {
         "command": "cw32.flash",
-        "title": "CW32L012: Flash via DAPLink"
+        "title": "CW32: Flash via DAPLink"
       },
       {
         "command": "cw32.selectArtifact",
-        "title": "CW32L012: 选择固件烧录 (Select firmware to flash)"
+        "title": "CW32: 选择固件烧录 (Select firmware to flash)"
       },
       {
         "command": "cw32.eraseAll",
-        "title": "CW32L012: 全片擦除 (Erase all)"
+        "title": "CW32: 全片擦除 (Erase all)"
       },
       {
         "command": "cw32.debug",
-        "title": "CW32L012: Start SWD debug session"
+        "title": "CW32: Start SWD debug session"
       },
       {
         "command": "cw32.debugPause",
-        "title": "CW32L012: 调试-暂停核心"
+        "title": "CW32: 调试-暂停核心"
       },
       {
         "command": "cw32.debugResume",
-        "title": "CW32L012: 调试-继续运行"
+        "title": "CW32: 调试-继续运行"
       },
       {
         "command": "cw32.debugStepOver",
-        "title": "CW32L012: 调试-单步步过"
+        "title": "CW32: 调试-单步步过"
       },
       {
         "command": "cw32.debugStepInto",
-        "title": "CW32L012: 调试-单步步入"
+        "title": "CW32: 调试-单步步入"
       },
       {
         "command": "cw32.debugStepOut",
-        "title": "CW32L012: 调试-单步步出"
+        "title": "CW32: 调试-单步步出"
       },
       {
         "command": "cw32.debugRestart",
-        "title": "CW32L012: 调试-复位并重新运行"
+        "title": "CW32: 调试-复位并重新运行"
       },
       {
         "command": "cw32.debugStop",
-        "title": "CW32L012: 调试-停止会话 (Stop debug session)"
+        "title": "CW32: 调试-停止会话 (Stop debug session)"
       },
       {
         "command": "cw32.checkStatus",
-        "title": "CW32L012: 深度检测 probe / MCU 状态"
+        "title": "CW32: 深度检测 probe / MCU 状态"
       },
       {
         "command": "cw32.reset",
-        "title": "CW32L012: Reset target"
+        "title": "CW32: Reset target"
       },
       {
         "command": "cw32.monitor",
-        "title": "CW32L012: 打开串口监视器 (Open serial monitor)"
+        "title": "CW32: 打开串口监视器 (Open serial monitor)"
       },
       {
         "command": "cw32.serialSend",
-        "title": "CW32L012: 串口发送一行 (Serial send)"
+        "title": "CW32: 串口发送一行 (Serial send)"
       },
       {
         "command": "cw32.aiSummary",
-        "title": "CW32L012: AI 诊断报告"
+        "title": "CW32: AI 诊断报告"
       },
       {
         "command": "cw32.apiToggle",
-        "title": "CW32L012: 启动/停止 Agent API"
+        "title": "CW32: 启动/停止 Agent API"
       },
       {
         "command": "cw32.apiStart",
-        "title": "CW32L012: 启动 Agent API"
+        "title": "CW32: 启动 Agent API"
       },
       {
         "command": "cw32.apiStop",
-        "title": "CW32L012: 停止 Agent API"
+        "title": "CW32: 停止 Agent API"
       },
       {
         "command": "cw32.mcpToggle",
-        "title": "CW32L012: 启停内嵌 MCP 服务器"
+        "title": "CW32: 启停内嵌 MCP 服务器"
       },
       {
         "command": "cw32.setSourceDir",
-        "title": "CW32L012: 指定源码目录（构建/烧录/调试取此目录）"
+        "title": "CW32: 指定源码目录（构建/烧录/调试取此目录）"
       }
     ],
     "debuggers": [
       {
         "type": "cw32-probe-rs",
-        "label": "CW32L012 probe-rs (SWD)",
+        "label": "CW32 probe-rs (SWD)",
         "languages": [
           "rust"
         ],
@@ -223,11 +223,11 @@
         },
         "configurationSnippets": [
           {
-            "label": "CW32L012: Launch probe-rs debug",
+            "label": "CW32: Launch probe-rs debug",
             "body": {
               "type": "cw32-probe-rs",
               "request": "launch",
-              "name": "CW32L012 Debug",
+              "name": "CW32 Debug",
               "chip": "CW32L012x8",
               "coreConfigs": [
                 {
@@ -241,12 +241,12 @@
       }
     ],
     "configuration": {
-      "title": "CW32L012",
+      "title": "CW32",
       "properties": {
         "cw32.target": {
           "type": "string",
           "default": "thumbv6m-none-eabi",
-          "description": "Rust target triple for CW32L012 builds."
+          "description": "Rust target triple for CW32 builds."
         },
         "cw32.profile": {
           "type": "string",
