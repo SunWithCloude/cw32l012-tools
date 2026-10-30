@@ -34,7 +34,7 @@ Agent / AI 集成（HTTP API、MCP）见 [AGENT_API.md](AGENT_API.md)；版本�
 
 > 例程选择 = Keil target 下拉的替代：Build 卡内「换例程」，选定后构建/烧录/调试都锁定该例程；
 > 例程尚无产物时拒绝回退烧别的固件（先 Build）。
-> 源目录：多仓库场景用「源目录栏 → 切换」手动指定 Cargo 根；设置写入 workspace 级 `cw32l012.workspaceRoot`。
+> 源目录：多仓库场景用「源目录栏 → 切换」手动指定 Cargo 根；设置写入 workspace 级 `cw32.workspaceRoot`。
 
 ## 4. 常见问题
 

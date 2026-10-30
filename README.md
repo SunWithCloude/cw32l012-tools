@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-[![CI](https://github.com/SunWithCloude/cw32l012-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/SunWithCloude/cw32l012-tools/actions/workflows/ci.yml)
+[![CI](https://github.com/SunWithCloude/cw32-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/SunWithCloude/cw32-tools/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-%E2%89%A51.90-007ACC.svg)](https://code.visualstudio.com/)
 
@@ -32,12 +32,12 @@ AI agent or a script can drive the same hardware workflow.
 | Flash (auto or pick) | Newest valid artifact, or choose from the verified list; `.bin` is flashed at `flashBaseAddress = 0x00000000` | Done |
 | Full chip erase | `probe-rs erase --allow-erase-all` (modal confirmation) | Done |
 | Reset | `probe-rs reset`; doubles as the "is the MCU alive" probe | Done |
-| Visual debugging | Registers a `cw32l012-probe-rs` debug type that spawns `probe-rs dap-server --single-session`: native breakpoints/stepping/watch **plus** a dashboard panel with PC, call stack, variables and a memory hex view | Done |
+| Visual debugging | Registers a `cw32-probe-rs` debug type that spawns `probe-rs dap-server --single-session`: native breakpoints/stepping/watch **plus** a dashboard panel with PC, call stack, variables and a memory hex view | Done |
 | Dashboard | Sidebar webview: graded status, clickable status strip, workflow card (① build → ② flash → ③ monitor), debug/memory panels, log ring buffer | Done |
 | Serial monitor | **In-panel implementation** (no external tool), with line send | Done |
 | Agent API | localhost HTTP JSON for AI / scripts — see `docs/AGENT_API.md` | Done |
 | MCP server | SSE transport, 19 tools over the hardware workflow | Done |
-| Multi-family | `cw32l012.family` profiles (CW32L012 / CW32F030): per-family register decode maps, memory presets and the bundled `tools/families/CW32F030_Series.yaml` target (byte-identical to upstream probe-rs PR #4549) — no manual chip-description config needed | Done |
+| Multi-family | `cw32.family` profiles (CW32L012 / CW32F030): per-family register decode maps, memory presets and the bundled `tools/families/CW32F030_Series.yaml` target (byte-identical to upstream probe-rs PR #4549) — no manual chip-description config needed | Done |
 | Chip auto-detect | `cw32_chip_detect` tool / `GET /api/detect` runs [cw32-detect](https://github.com/SunWithCloude/cw32-probe-rs-compat) (factory digital-signature reader) and can auto-fill the `chip` setting | Done |
 | Probe exclusivity | While a debug session is alive, all reads go through DAP (auto pause→read→resume when running); hardware ops (flash/erase/reset/detect) stop the session first — the CLI-vs-dap-server probe contention that silently killed sessions in 0.6.x is gone | Done |
 | Status bar, example picker, post-flash verify, standalone clean | — | Done |
@@ -74,12 +74,12 @@ probe-rs chip list | grep CW32L0      # 0.32+ ships the CW32L0 series
 
 ```bash
 # from a packaged VSIX
-code --install-extension cw32l012-tools-0.6.7.vsix
+code --install-extension cw32-tools-0.6.7.vsix
 
 # or build it yourself
 npm ci && npm run compile
 npx @vscode/vsce package
-code --install-extension cw32l012-tools-0.6.7.vsix
+code --install-extension cw32-tools-0.6.7.vsix
 ```
 
 Or use the Extensions view → `...` → *Install from VSIX…*. After installation,
@@ -88,7 +88,7 @@ open the **CW32L012** icon in the activity bar to reach the dashboard.
 Then **open a Rust workspace containing `Cargo.toml`** (for example
 [`Rust_Cw32L012`](https://github.com/SunWithCloude/Rust_Cw32L012), the companion
 HAL). The extension walks upwards to find the cargo root; you can also pin it
-with `cw32l012.workspaceRoot` or the *Source directory* field in the dashboard.
+with `cw32.workspaceRoot` or the *Source directory* field in the dashboard.
 
 ---
 
@@ -142,7 +142,7 @@ away by context.
 | `CW32L012: Set source directory` | Write `workspaceRoot`; empty restores auto-detection |
 | `CW32L012: Generate .mcp.json` | Write the correct MCP client config for the embedded MCP server into the workspace |
 
-## Settings (`cw32l012.*`)
+## Settings (`cw32.*`)
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -206,7 +206,7 @@ memory read/write, peripheral registers, serial, diagnostics — and **no code
 editing tools**; editing belongs to the editor and the AI extension.
 
 ```json
-{ "mcpServers": { "cw32l012": { "type": "sse", "url": "http://127.0.0.1:3679/sse" } } }
+{ "mcpServers": { "cw32": { "type": "sse", "url": "http://127.0.0.1:3679/sse" } } }
 ```
 
 ## Human × AI concurrency guard

@@ -1,12 +1,12 @@
 {
-  "name": "cw32l012-tools",
-  "displayName": "CW32L012 Tools",
+  "name": "cw32-tools",
+  "displayName": "CW32 Tools",
   "description": "Build, flash, visually debug, and AI-drive CW32L012 projects with a probe-rs + DAPLink workflow.",
-  "version": "0.8.0",
-  "publisher": "cw32l012",
+  "version": "0.9.0",
+  "publisher": "cw32",
   "repository": {
     "type": "git",
-    "url": "https://github.com/SunWithCloude/cw32l012-tools.git"
+    "url": "https://github.com/SunWithCloude/cw32-tools.git"
   },
   "license": "MIT",
   "icon": "icon.png",
@@ -25,16 +25,16 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "cw32l012",
+          "id": "cw32",
           "title": "CW32L012",
           "icon": "$(debug-alt)"
         }
       ]
     },
     "views": {
-      "cw32l012": [
+      "cw32": [
         {
-          "id": "cw32l012.dashboard",
+          "id": "cw32.dashboard",
           "name": "Dashboard",
           "type": "webview",
           "when": "true"
@@ -43,129 +43,129 @@
     },
     "viewsWelcome": [
       {
-        "view": "cw32l012.dashboard",
-        "contents": "CW32L012 extension is ready.\n[Build firmware](command:cw32l012.build)\n[Select example](command:cw32l012.selectExample)\n[Flash via DAPLink](command:cw32l012.flash)\n[Select firmware to flash](command:cw32l012.selectArtifact)\n[Start SWD debug session](command:cw32l012.debug)\n[Check probe / MCU status](command:cw32l012.checkStatus)\n[Open serial monitor](command:cw32l012.monitor)"
+        "view": "cw32.dashboard",
+        "contents": "CW32L012 extension is ready.\n[Build firmware](command:cw32.build)\n[Select example](command:cw32.selectExample)\n[Flash via DAPLink](command:cw32.flash)\n[Select firmware to flash](command:cw32.selectArtifact)\n[Start SWD debug session](command:cw32.debug)\n[Check probe / MCU status](command:cw32.checkStatus)\n[Open serial monitor](command:cw32.monitor)"
       }
     ],
     "commands": [
       {
-        "command": "cw32l012.detectChip",
+        "command": "cw32.detectChip",
         "title": "CW32: 识别芯片（cw32-detect 出厂数字签名）",
         "category": "CW32L012"
       },
       {
-        "command": "cw32l012.generateMcpJson",
+        "command": "cw32.generateMcpJson",
         "title": "CW32: 生成 .mcp.json（MCP 客户端接入）",
         "category": "CW32L012"
       },
       {
-        "command": "cw32l012.showDashboard",
+        "command": "cw32.showDashboard",
         "title": "CW32L012: Open dashboard"
       },
       {
-        "command": "cw32l012.build",
+        "command": "cw32.build",
         "title": "CW32L012: Build firmware (cargo clean + build)"
       },
       {
-        "command": "cw32l012.rebuild",
+        "command": "cw32.rebuild",
         "title": "CW32L012: 重新构建 (clean + build)"
       },
       {
-        "command": "cw32l012.clean",
+        "command": "cw32.clean",
         "title": "CW32L012: 清理构建产物 (cargo clean)"
       },
       {
-        "command": "cw32l012.selectExample",
+        "command": "cw32.selectExample",
         "title": "CW32L012: 选择例程 / 目标 (Select example)"
       },
       {
-        "command": "cw32l012.flash",
+        "command": "cw32.flash",
         "title": "CW32L012: Flash via DAPLink"
       },
       {
-        "command": "cw32l012.selectArtifact",
+        "command": "cw32.selectArtifact",
         "title": "CW32L012: 选择固件烧录 (Select firmware to flash)"
       },
       {
-        "command": "cw32l012.eraseAll",
+        "command": "cw32.eraseAll",
         "title": "CW32L012: 全片擦除 (Erase all)"
       },
       {
-        "command": "cw32l012.debug",
+        "command": "cw32.debug",
         "title": "CW32L012: Start SWD debug session"
       },
       {
-        "command": "cw32l012.debugPause",
+        "command": "cw32.debugPause",
         "title": "CW32L012: 调试-暂停核心"
       },
       {
-        "command": "cw32l012.debugResume",
+        "command": "cw32.debugResume",
         "title": "CW32L012: 调试-继续运行"
       },
       {
-        "command": "cw32l012.debugStepOver",
+        "command": "cw32.debugStepOver",
         "title": "CW32L012: 调试-单步步过"
       },
       {
-        "command": "cw32l012.debugStepInto",
+        "command": "cw32.debugStepInto",
         "title": "CW32L012: 调试-单步步入"
       },
       {
-        "command": "cw32l012.debugStepOut",
+        "command": "cw32.debugStepOut",
         "title": "CW32L012: 调试-单步步出"
       },
       {
-        "command": "cw32l012.debugRestart",
+        "command": "cw32.debugRestart",
         "title": "CW32L012: 调试-复位并重新运行"
       },
       {
-        "command": "cw32l012.debugStop",
+        "command": "cw32.debugStop",
         "title": "CW32L012: 调试-停止会话 (Stop debug session)"
       },
       {
-        "command": "cw32l012.checkStatus",
+        "command": "cw32.checkStatus",
         "title": "CW32L012: 深度检测 probe / MCU 状态"
       },
       {
-        "command": "cw32l012.reset",
+        "command": "cw32.reset",
         "title": "CW32L012: Reset target"
       },
       {
-        "command": "cw32l012.monitor",
+        "command": "cw32.monitor",
         "title": "CW32L012: 打开串口监视器 (Open serial monitor)"
       },
       {
-        "command": "cw32l012.serialSend",
+        "command": "cw32.serialSend",
         "title": "CW32L012: 串口发送一行 (Serial send)"
       },
       {
-        "command": "cw32l012.aiSummary",
+        "command": "cw32.aiSummary",
         "title": "CW32L012: AI 诊断报告"
       },
       {
-        "command": "cw32l012.apiToggle",
+        "command": "cw32.apiToggle",
         "title": "CW32L012: 启动/停止 Agent API"
       },
       {
-        "command": "cw32l012.apiStart",
+        "command": "cw32.apiStart",
         "title": "CW32L012: 启动 Agent API"
       },
       {
-        "command": "cw32l012.apiStop",
+        "command": "cw32.apiStop",
         "title": "CW32L012: 停止 Agent API"
       },
       {
-        "command": "cw32l012.mcpToggle",
+        "command": "cw32.mcpToggle",
         "title": "CW32L012: 启停内嵌 MCP 服务器"
       },
       {
-        "command": "cw32l012.setSourceDir",
+        "command": "cw32.setSourceDir",
         "title": "CW32L012: 指定源码目录（构建/烧录/调试取此目录）"
       }
     ],
     "debuggers": [
       {
-        "type": "cw32l012-probe-rs",
+        "type": "cw32-probe-rs",
         "label": "CW32L012 probe-rs (SWD)",
         "languages": [
           "rust"
@@ -225,7 +225,7 @@
           {
             "label": "CW32L012: Launch probe-rs debug",
             "body": {
-              "type": "cw32l012-probe-rs",
+              "type": "cw32-probe-rs",
               "request": "launch",
               "name": "CW32L012 Debug",
               "chip": "CW32L012x8",
@@ -243,12 +243,12 @@
     "configuration": {
       "title": "CW32L012",
       "properties": {
-        "cw32l012.target": {
+        "cw32.target": {
           "type": "string",
           "default": "thumbv6m-none-eabi",
           "description": "Rust target triple for CW32L012 builds."
         },
-        "cw32l012.profile": {
+        "cw32.profile": {
           "type": "string",
           "default": "debug",
           "enum": [
@@ -257,37 +257,37 @@
           ],
           "description": "Cargo profile used for artifact resolution."
         },
-        "cw32l012.chip": {
+        "cw32.chip": {
           "type": "string",
           "default": "CW32L012x8",
           "description": "Chip name for probe-rs (e.g. CW32L012x8 / CW32F030C8). cw32-detect can fill this automatically."
         },
-        "cw32l012.family": {
+        "cw32.family": {
           "type": "string",
           "default": "auto",
           "enum": [
             "auto",
-            "cw32l012",
+            "cw32",
             "cw32f030"
           ],
           "description": "CW32 family profile: selects the register map, presets and default target YAML. 'auto' derives it from the chip name prefix."
         },
-        "cw32l012.detectPath": {
+        "cw32.detectPath": {
           "type": "string",
           "default": "cw32-detect",
           "description": "Path or command name of cw32-detect (factory digital-signature chip detector, github.com/SunWithCloude/cw32-probe-rs-compat). Used by /api/detect and the cw32_chip_detect tool."
         },
-        "cw32l012.chipDescriptionPath": {
+        "cw32.chipDescriptionPath": {
           "type": "string",
           "default": "",
           "description": "Path to an external CW32L0 target YAML for probe-rs. Leave empty: probe-rs 0.32+ ships CW32L0 built in, and the extension auto-detects tools/CW32L0_Series.yaml in the workspace as a fallback for older probe-rs."
         },
-        "cw32l012.probeId": {
+        "cw32.probeId": {
           "type": "string",
           "default": "0483:3748",
           "description": "Debug probe ID (VID:PID)."
         },
-        "cw32l012.protocol": {
+        "cw32.protocol": {
           "type": "string",
           "default": "swd",
           "enum": [
@@ -295,47 +295,47 @@
             "jtag"
           ]
         },
-        "cw32l012.flashBaseAddress": {
+        "cw32.flashBaseAddress": {
           "type": "string",
           "default": "0x00000000",
           "description": "Base address for raw .bin flashing (CW32L012 FLASH ORIGIN = 0x00000000)."
         },
-        "cw32l012.workspaceRoot": {
+        "cw32.workspaceRoot": {
           "type": "string",
           "default": "",
           "description": "Manual workspace root (folder containing Cargo.toml). Leave empty to auto-detect. Switchable from the dashboard source-dir bar."
         },
-        "cw32l012.apiPort": {
+        "cw32.apiPort": {
           "type": "number",
           "default": 3678,
           "description": "Port for the localhost Agent API (AI direct access)."
         },
-        "cw32l012.apiToken": {
+        "cw32.apiToken": {
           "type": "string",
           "default": "",
           "description": "Optional token. When set, API requests must carry header 'x-cw32-token: <token>'."
         },
-        "cw32l012.apiAutoStart": {
+        "cw32.apiAutoStart": {
           "type": "boolean",
           "default": true,
           "description": "Start the Agent API server when the extension activates."
         },
-        "cw32l012.verifyAfterFlash": {
+        "cw32.verifyAfterFlash": {
           "type": "boolean",
           "default": true,
           "description": "烧录完成后自动执行 probe-rs verify，校验 FLASH 内容与固件一致。"
         },
-        "cw32l012.monitorBaudRate": {
+        "cw32.monitorBaudRate": {
           "type": "number",
           "default": 115200,
           "description": "串口监视器默认波特率（打开时仍可临时选择）。"
         },
-        "cw32l012.mcpPort": {
+        "cw32.mcpPort": {
           "type": "number",
           "default": 3679,
-          "description": "内嵌 MCP 服务器端口（SSE，仅绑定 127.0.0.1）。Claude Code 配 mcpServers.cw32l012 → http://127.0.0.1:3679/sse"
+          "description": "内嵌 MCP 服务器端口（SSE，仅绑定 127.0.0.1）。Claude Code 配 mcpServers.cw32 → http://127.0.0.1:3679/sse"
         },
-        "cw32l012.mcpAutoStart": {
+        "cw32.mcpAutoStart": {
           "type": "boolean",
           "default": true,
           "description": "插件激活时自动启动内嵌 MCP 服务器（工具：状态/构建/烧录/调试/内存/寄存器/串口）。"
@@ -359,12 +359,12 @@
     "serialport": "^13.0.0"
   },
   "bugs": {
-    "url": "https://github.com/SunWithCloude/cw32l012-tools/issues"
+    "url": "https://github.com/SunWithCloude/cw32-tools/issues"
   },
-  "homepage": "https://github.com/SunWithCloude/cw32l012-tools",
+  "homepage": "https://github.com/SunWithCloude/cw32-tools",
   "keywords": [
     "cw32",
-    "cw32l012",
+    "cw32",
     "cmsemicon",
     "embedded",
     "rust",

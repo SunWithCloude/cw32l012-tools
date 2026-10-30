@@ -7,10 +7,10 @@ import { spawn } from 'child_process';
 import { FAMILIES, familyFromChip, FamilyKey, FamilyProfile, PeriphDef, RegDef, RegField } from './families';
 
 /* ============================================================
- * CW32L012 Tools v0.7
+ * CW32 Tools v0.7
  *
  *  - 构建/烧录：cargo metadata 定位真实产物目录，allowlist + 魔数校验
- *  - 可视化调试：注册 cw32l012-probe-rs 调试适配器（probe-rs dap-server），
+ *  - 可视化调试：注册 cw32-probe-rs 调试适配器（probe-rs dap-server），
  *    仪表盘轮询 DAP 会话渲染 PC/调用栈/变量/内存
  *  - 探针独占模型：调试会话存活期间一切读数只走 DAP（运行态自动
  *    pause→读→resume），硬件操作自动结束会话释放探针——杜绝 CLI 与
@@ -21,16 +21,16 @@ import { FAMILIES, familyFromChip, FamilyKey, FamilyProfile, PeriphDef, RegDef, 
  * ============================================================ */
 
 const DASHBOARD_TITLE = 'CW32 Console';
-const LOG_NAME = 'CW32L012 Tools';
+const LOG_NAME = 'CW32 Tools';
 /** 旧版 probe-rs（< 0.32）才需要的外部目标文件；新版已内置 CW32L0 */
 const LEGACY_YAML_REL = path.join('tools', 'CW32L0_Series.yaml');
 const DEFAULT_PROBE = '0483:3748';
 const DEFAULT_CHIP = 'CW32L012x8';
 const DEFAULT_TARGET = 'thumbv6m-none-eabi';
 const FLASH_BASE_DEFAULT = '0x00000000'; // CW32 全系列 FLASH ORIGIN（memory.x），不是 0x08000000
-const DEBUG_TYPE = 'cw32l012-probe-rs';
+const DEBUG_TYPE = 'cw32-probe-rs';
 const AUTO_EXAMPLE = '__auto__'; // 例程选择器哨兵值：自动选择最新产物
-const WORKSPACE_EXAMPLE_KEY = 'cw32l012.selectedExample';
+const WORKSPACE_EXAMPLE_KEY = 'cw32.selectedExample';
 /** cw32-detect（github.com/SunWithCloude/cw32-probe-rs-compat）可执行文件名/路径 */
 const DEFAULT_DETECT_PATH = 'cw32-detect';
 
@@ -169,7 +169,7 @@ function resolveChipDescriptionPath(explicit: string, workspaceRoot: string | un
 }
 
 function getConfig(): ExtConfig {
-  const cfg = vscode.workspace.getConfiguration('cw32l012');
+  const cfg = vscode.workspace.getConfiguration('cw32');
   const profile = cfg.get<string>('profile') || 'debug';
   const chip = cfg.get<string>('chip') || DEFAULT_CHIP;
   const familySetting = cfg.get<string>('family') || 'auto';
@@ -260,7 +260,7 @@ function setSelectedExample(name: string): void {
 async function selectExample(): Promise<void> {
   const root = getWorkspaceRoot();
   if (!root) {
-    vscode.window.showWarningMessage('请先打开 CW32L012 工作区。');
+    vscode.window.showWarningMessage('请先打开 CW32 工作区。');
     return;
   }
   const info = await getCargoInfo(root);
@@ -296,10 +296,10 @@ async function selectExample(): Promise<void> {
 async function setSourceDir(): Promise<void> {
   const current = getWorkspaceRoot() ?? '';
   const picked = await vscode.window.showInputBox({
-    title: 'CW32L012 源码目录（构建 / 烧录 / 调试从此目录取）',
+    title: 'CW32 源码目录（构建 / 烧录 / 调试从此目录取）',
     value: current,
     prompt: '输入含 Cargo.toml 的固件项目目录；留空恢复自动（从工作区探测）',
-    placeHolder: '例：D:\\projects\\cw32l012-firmware',
+    placeHolder: '例：D:\\projects\\cw32-firmware',
     ignoreFocusOut: true,
     validateInput(value: string): string | undefined {
       const v = value.trim();
@@ -311,15 +311,15 @@ async function setSourceDir(): Promise<void> {
   });
   if (picked === undefined) return; // 取消
   const value = picked.trim();
-  const cfg = vscode.workspace.getConfiguration('cw32l012');
+  const cfg = vscode.workspace.getConfiguration('cw32');
   await cfg.update('workspaceRoot', value === '' ? undefined : value, vscode.ConfigurationTarget.Workspace);
   cargoInfoCache = undefined; // 换目录后 example 列表/产物缓存全部作废
   if (value === '') {
     logBoth('[select] 源目录: 清除手动指定，恢复自动探测');
-    vscode.window.showInformationMessage('CW32L012 源目录已恢复自动探测。');
+    vscode.window.showInformationMessage('CW32 源目录已恢复自动探测。');
   } else {
     logBoth(`[select] 源目录: ${value}（手动指定）`);
-    vscode.window.showInformationMessage(`CW32L012 源目录 → ${value}`);
+    vscode.window.showInformationMessage(`CW32 源目录 → ${value}`);
   }
   bumpSettingsEpoch(`源目录 → ${value === '' ? '自动' : value}`);
   void pushDashState();
@@ -329,7 +329,7 @@ async function setSourceDir(): Promise<void> {
 
 /**
  * 生成/刷新工作区 .mcp.json：把本插件内嵌 MCP 服务器的接入信息写给
- * MCP 客户端（Claude Code / ZCode 等）。端口取自 cw32l012.mcpPort。
+ * MCP 客户端（Claude Code / ZCode 等）。端口取自 cw32.mcpPort。
  */
 async function generateMcpJson(): Promise<void> {
   const ws = vscode.workspace.workspaceFolders?.[0];
@@ -339,7 +339,7 @@ async function generateMcpJson(): Promise<void> {
   }
   const port = getConfig().mcpPort;
   const content = JSON.stringify(
-    { mcpServers: { cw32l012: { type: 'sse', url: `http://127.0.0.1:${port}/sse` } } },
+    { mcpServers: { cw32: { type: 'sse', url: `http://127.0.0.1:${port}/sse` } } },
     null,
     2
   ) + '\n';
@@ -613,6 +613,52 @@ function buildEraseCommand(): string {
   return `probe-rs erase ${probeBaseArgs().join(' ')} --allow-erase-all`;
 }
 
+/* 0.9.0 更名迁移：cw32l012-tools → cw32-tools。
+ * 把旧 `cw32l012.*` 设置键（工作区/用户两处）搬到 `cw32.*`（新键已有值则跳过），
+ * 并迁移工作区状态里的例程选择；搬完清掉旧键避免下次重复迁移。 */
+function migrateLegacyIdentity(context: vscode.ExtensionContext): void {
+  const legacy = vscode.workspace.getConfiguration('cw32l012');
+  const fresh = vscode.workspace.getConfiguration('cw32');
+  const keys = [
+    'target', 'profile', 'chip', 'family', 'chipDescriptionPath', 'probeId',
+    'protocol', 'flashBaseAddress', 'workspaceRoot', 'apiPort', 'apiToken',
+    'apiAutoStart', 'verifyAfterFlash', 'monitorBaudRate', 'mcpPort', 'mcpAutoStart',
+    'detectPath'
+  ];
+  const migrated: string[] = [];
+  for (const k of keys) {
+    const li = legacy.inspect(k);
+    const oldValue = li?.workspaceValue ?? li?.globalValue;
+    if (oldValue === undefined) {
+      continue;
+    }
+    const fi = fresh.inspect(k);
+    if (fi?.workspaceValue !== undefined || fi?.globalValue !== undefined) {
+      continue;
+    }
+    const target = li?.workspaceValue !== undefined
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
+    void fresh.update(k, oldValue, target);
+    void legacy.update(k, undefined, target);
+    migrated.push(k);
+  }
+  // 例程选择（工作区状态，带 :workspaceKey 后缀的任意键）
+  for (const key of context.workspaceState.keys()) {
+    if (typeof key === 'string' && key.startsWith('cw32l012.selectedExample')) {
+      const v = context.workspaceState.get<string>(key);
+      const nk = key.replace('cw32l012.selectedExample', 'cw32.selectedExample');
+      if (v !== undefined && context.workspaceState.get(nk) === undefined) {
+        void context.workspaceState.update(nk, v);
+      }
+      void context.workspaceState.update(key, undefined);
+    }
+  }
+  if (migrated.length) {
+    logBoth(`[migrate] 设置已从 cw32l012.* 迁移到 cw32.*: ${migrated.join(', ')}`);
+  }
+}
+
 /* ------------------------------------------------------------
  * 状态判定：probe 在线 ≠ MCU 在线
  * ---------------------------------------------------------- */
@@ -695,7 +741,7 @@ function ensureStatusBar(): vscode.StatusBarItem {
   if (!statusBarItem) {
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
     statusBarItem.name = 'CW32L012';
-    statusBarItem.command = 'cw32l012.showDashboard'; // 点击打开仪表盘
+    statusBarItem.command = 'cw32.showDashboard'; // 点击打开仪表盘
     statusBarItem.show();
   }
   return statusBarItem;
@@ -957,7 +1003,7 @@ async function runChipDetectOnce(): Promise<DetectReport> {
     if (msg.includes('not recognized') || msg.includes('不是内部或外部命令') || msg.includes('ENOENT') || msg.includes('not found')) {
       return {
         ok: false,
-        raw: 'cw32-detect 未找到。安装：github.com/SunWithCloude/cw32-probe-rs-compat（cargo build --release 后把 cw32-detect.exe 放进 PATH，或设置 cw32l012.detectPath 指向它）'
+        raw: 'cw32-detect 未找到。安装：github.com/SunWithCloude/cw32-probe-rs-compat（cargo build --release 后把 cw32-detect.exe 放进 PATH，或设置 cw32.detectPath 指向它）'
       };
     }
     return { ok: false, raw: `cw32-detect 运行失败: ${msg.split('\n')[0]}` };
@@ -1068,7 +1114,7 @@ async function readPeripheralRegisters(key: string): Promise<{ peripheral: Perip
  * 规则一：硬件互斥（悲观租约）。同一时刻只允许一个操作者占用硬件链路
  *   （build/flash/erase/reset/调试控制/写内存/开串口/例程选择）。
  *   后来者收到结构化冲突错误：谁在干什么、持续多久、怎么观察。
- * 规则二：设置一致性（乐观版本号 settingsEpoch）。cw32l012.* 配置或
+ * 规则二：设置一致性（乐观版本号 settingsEpoch）。cw32.* 配置或
  *   例程/产物选择被改动即 +1。AI 关键操作可带 expectedEpoch：
  *   若中途有人改了设置（例如恶作剧），操作拒绝执行并提示重新 status，
  *   AI 重新拉取状态后自愈——既不盲干也不死锁。
@@ -1240,7 +1286,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse): P
   if (cfg.apiToken) {
     const provided = req.headers['x-cw32-token'] || url.searchParams.get('token');
     if (provided !== cfg.apiToken) {
-      json(res, 401, { ok: false, error: 'token 不匹配（设置 cw32l012.apiToken 后需携带 x-cw32-token 头）' });
+      json(res, 401, { ok: false, error: 'token 不匹配（设置 cw32.apiToken 后需携带 x-cw32-token 头）' });
       return;
     }
   }
@@ -1469,7 +1515,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse): P
       const rep = await runChipDetect();
       let appliedChip: string | undefined;
       if (url.searchParams.get('apply') === '1' && rep.ok && rep.chip) {
-        await vscode.workspace.getConfiguration('cw32l012').update('chip', rep.chip, vscode.ConfigurationTarget.Workspace);
+        await vscode.workspace.getConfiguration('cw32').update('chip', rep.chip, vscode.ConfigurationTarget.Workspace);
         appliedChip = rep.chip;
       }
       json(res, rep.ok ? 200 : 503, { ...rep, appliedChip });
@@ -1635,7 +1681,7 @@ async function runBuild(): Promise<void> {
         await runCommandLogged(buildCmd, root, 600_000);
         const artifact = await resolveArtifact(root);
         if (!artifact) {
-          vscode.window.showWarningMessage('构建成功，但未找到可识别的固件产物。请查看 CW32L012 Tools 输出通道。');
+          vscode.window.showWarningMessage('构建成功，但未找到可识别的固件产物。请查看 CW32 Tools 输出通道。');
           return;
         }
         logBoth(`[ok] 构建成功 → ${artifact.filePath} (${artifact.kind.toUpperCase()})`);
@@ -1653,7 +1699,7 @@ async function runBuild(): Promise<void> {
 async function runClean(): Promise<void> {
   const root = getWorkspaceRoot();
   if (!root) {
-    vscode.window.showWarningMessage('请先打开 CW32L012 工作区。');
+    vscode.window.showWarningMessage('请先打开 CW32 工作区。');
     return;
   }
   await vscode.window.withProgress(
@@ -1675,7 +1721,7 @@ async function runClean(): Promise<void> {
 async function runRebuild(): Promise<void> {
   const root = getWorkspaceRoot();
   if (!root) {
-    vscode.window.showWarningMessage('请先打开 CW32L012 工作区。');
+    vscode.window.showWarningMessage('请先打开 CW32 工作区。');
     return;
   }
   const cfg = getConfig();
@@ -1767,7 +1813,7 @@ async function flashArtifact(artifact: FirmwareCandidate, root: string): Promise
 async function runFlash(): Promise<void> {
   const root = getWorkspaceRoot();
   if (!root) {
-    vscode.window.showWarningMessage('请先打开 CW32L012 工作区再烧录。');
+    vscode.window.showWarningMessage('请先打开 CW32 工作区再烧录。');
     return;
   }
   const artifact = await resolveArtifact(root);
@@ -1789,7 +1835,7 @@ async function runFlash(): Promise<void> {
 async function selectArtifact(): Promise<void> {
   const root = getWorkspaceRoot();
   if (!root) {
-    vscode.window.showWarningMessage('请先打开 CW32L012 工作区。');
+    vscode.window.showWarningMessage('请先打开 CW32 工作区。');
     return;
   }
   const { candidates, targetDirectory } = await collectFirmwareCandidates(root);
@@ -1850,7 +1896,7 @@ async function checkStatus(): Promise<void> {
 async function startDebugSession(): Promise<boolean> {
   const root = getWorkspaceRoot();
   if (!root) {
-    vscode.window.showWarningMessage('请先打开 CW32L012 工作区。');
+    vscode.window.showWarningMessage('请先打开 CW32 工作区。');
     return false;
   }
   const artifact = await resolveArtifact(root);
@@ -1945,7 +1991,7 @@ function loadSerialport(): SerialPortCtor | undefined {
 }
 
 function getSerialChannel(): vscode.OutputChannel {
-  if (!serialChannel) serialChannel = vscode.window.createOutputChannel('CW32L012 Serial');
+  if (!serialChannel) serialChannel = vscode.window.createOutputChannel('CW32 Serial');
   return serialChannel;
 }
 
@@ -2105,7 +2151,7 @@ const MCP_TOOLS: McpToolDef[] = [
     inputSchema: { type: 'object', properties: { expectedEpoch: { type: 'number', description: '上次 cw32_status 返回的 settingsEpoch；不匹配则拒绝执行' } } },
     handler: async () => {
       const root = getWorkspaceRoot();
-      if (!root) throw new Error('未打开 CW32L012 工作区');
+      if (!root) throw new Error('未打开 CW32 工作区');
       const targeted = buildCommandForSelected(root);
       if (!targeted) await runCommandLogged('cargo clean', root, 120_000);
       cargoInfoCache = undefined;
@@ -2122,7 +2168,7 @@ const MCP_TOOLS: McpToolDef[] = [
     inputSchema: { type: 'object', properties: { expectedEpoch: { type: 'number', description: '上次 cw32_status 返回的 settingsEpoch；不匹配则拒绝执行' } } },
     handler: async () => {
       const root = getWorkspaceRoot();
-      if (!root) throw new Error('未打开 CW32L012 工作区');
+      if (!root) throw new Error('未打开 CW32 工作区');
       const artifact = await resolveArtifact(root);
       if (!artifact) throw new Error('未找到有效固件产物（.elf/.bin/.hex）。请先 cw32_build。这是 artifact 问题，不是 MCU 不在线。');
       await flashArtifact(artifact, root);
@@ -2315,13 +2361,13 @@ const MCP_TOOLS: McpToolDef[] = [
   },
   {
     name: 'cw32_chip_detect',
-    description: '运行 cw32-detect 读出厂数字签名识别芯片（型号串/Flash/RAM/管脚/UID/probe-rs 目标名）。apply=true 时把识别到的芯片名写入 cw32l012.chip 设置。需 cw32-detect 可执行（github.com/SunWithCloude/cw32-probe-rs-compat）。',
+    description: '运行 cw32-detect 读出厂数字签名识别芯片（型号串/Flash/RAM/管脚/UID/probe-rs 目标名）。apply=true 时把识别到的芯片名写入 cw32.chip 设置。需 cw32-detect 可执行（github.com/SunWithCloude/cw32-probe-rs-compat）。',
     inputSchema: { type: 'object', properties: { apply: { type: 'boolean', description: '把识别结果写入 chip 设置（默认 false）' } } },
     handler: async a => {
       const rep = await runChipDetect();
       let appliedChip: string | undefined;
       if (a.apply === true && rep.ok && rep.chip) {
-        await vscode.workspace.getConfiguration('cw32l012').update('chip', rep.chip, vscode.ConfigurationTarget.Workspace);
+        await vscode.workspace.getConfiguration('cw32').update('chip', rep.chip, vscode.ConfigurationTarget.Workspace);
         appliedChip = rep.chip; // 设置变更钩子会自动 bumpSettingsEpoch
       }
       return { ...rep, appliedChip };
@@ -2335,7 +2381,7 @@ async function handleMcpMessage(msg: { jsonrpc?: string; id?: unknown; method?: 
   const method = msg.method ?? '';
   if (method === 'initialize') {
     const requested = msg.params?.protocolVersion;
-    return { jsonrpc: '2.0', id, result: { protocolVersion: typeof requested === 'string' && requested ? requested : '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'cw32l012-tools', version: extVersion }, instructions: 'CW32L012 嵌入式工作流：先 cw32_status，再 build→flash→debug。只管硬件链路，不做代码编辑。并发规则：硬件操作互斥（冲突时报错说明占用方）；设置被人类改动时用 expectedEpoch 重新校验。' } };
+    return { jsonrpc: '2.0', id, result: { protocolVersion: typeof requested === 'string' && requested ? requested : '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'cw32-tools', version: extVersion }, instructions: 'CW32L012 嵌入式工作流：先 cw32_status，再 build→flash→debug。只管硬件链路，不做代码编辑。并发规则：硬件操作互斥（冲突时报错说明占用方）；设置被人类改动时用 expectedEpoch 重新校验。' } };
   }
   if (method === 'notifications/initialized' || method === 'notifications/cancelled' || method.startsWith('notifications/')) return undefined;
   if (method === 'ping') return { jsonrpc: '2.0', id, result: {} };
@@ -2417,7 +2463,7 @@ function startMcpServer(): Promise<string> {
     srv.on('error', reject);
     srv.listen(port, '127.0.0.1', () => {
       mcpServer = srv; mcpPortActive = port;
-      const msg = `MCP 服务器已启动: http://127.0.0.1:${port}/sse（Claude Code：mcpServers.cw32l012 → type sse）`;
+      const msg = `MCP 服务器已启动: http://127.0.0.1:${port}/sse（Claude Code：mcpServers.cw32 → type sse）`;
       logBoth(`[mcp] ${msg}（${MCP_TOOLS.length} 个工具：硬件工作流专用，不含代码编辑）`);
       resolve(msg);
     });
@@ -2814,52 +2860,52 @@ async function buildDashboardHtml(): Promise<string> {
     </div>
     <div class="content">
       <div class="metrics">
-        <div class="metric" data-command="cw32l012.checkStatus" title="点击：深度检测 probe / MCU 状态"><div class="metric-label">Probe ↯</div><div class="metric-value" id="m-probe">${esc(state.probe)}</div></div>
-        <div class="metric" data-command="cw32l012.reset" title="点击：复位目标（probe-rs reset）"><div class="metric-label">MCU ↯</div><div class="metric-value" id="m-mcu">${esc(state.mcu)}</div></div>
-        <div class="metric" data-command="cw32l012.detectChip" title="点击：cw32-detect 读出厂数字签名识别芯片（会先结束调试会话独占探针）"><div class="metric-label">Chip ↯</div><div class="metric-value" id="m-chip">${esc(state.detected || state.chip)}</div></div>
-        <div class="metric" data-command="cw32l012.selectArtifact" title="点击：指定烧录产物（默认自动选最新）"><div class="metric-label">Firmware ↯</div><div class="metric-value" id="m-fw">${esc(state.firmware)}</div></div>
-        <div class="metric" data-command="cw32l012.monitor" title="点击：打开 / 切换串口"><div class="metric-label">Serial ↯</div><div class="metric-value" id="m-serial">${state.serialOpen ? esc(state.serialPath ?? '') + ' @ ' + state.serialBaud : 'CLOSED'}</div></div>
-        <div class="metric" data-command="cw32l012.apiToggle" title="点击：启停 Agent API"><div class="metric-label">Agent API ↯</div><div class="metric-value" id="m-api">${state.apiRunning ? 'RUNNING :' + state.apiPort : 'STOPPED'}</div></div>
-        <div class="metric" data-command="cw32l012.mcpToggle" title="点击：启停 MCP 服务"><div class="metric-label">MCP ↯</div><div class="metric-value" id="m-mcp">${mcpPortActive ? ':' + mcpPortActive : 'OFF'}</div></div>
+        <div class="metric" data-command="cw32.checkStatus" title="点击：深度检测 probe / MCU 状态"><div class="metric-label">Probe ↯</div><div class="metric-value" id="m-probe">${esc(state.probe)}</div></div>
+        <div class="metric" data-command="cw32.reset" title="点击：复位目标（probe-rs reset）"><div class="metric-label">MCU ↯</div><div class="metric-value" id="m-mcu">${esc(state.mcu)}</div></div>
+        <div class="metric" data-command="cw32.detectChip" title="点击：cw32-detect 读出厂数字签名识别芯片（会先结束调试会话独占探针）"><div class="metric-label">Chip ↯</div><div class="metric-value" id="m-chip">${esc(state.detected || state.chip)}</div></div>
+        <div class="metric" data-command="cw32.selectArtifact" title="点击：指定烧录产物（默认自动选最新）"><div class="metric-label">Firmware ↯</div><div class="metric-value" id="m-fw">${esc(state.firmware)}</div></div>
+        <div class="metric" data-command="cw32.monitor" title="点击：打开 / 切换串口"><div class="metric-label">Serial ↯</div><div class="metric-value" id="m-serial">${state.serialOpen ? esc(state.serialPath ?? '') + ' @ ' + state.serialBaud : 'CLOSED'}</div></div>
+        <div class="metric" data-command="cw32.apiToggle" title="点击：启停 Agent API"><div class="metric-label">Agent API ↯</div><div class="metric-value" id="m-api">${state.apiRunning ? 'RUNNING :' + state.apiPort : 'STOPPED'}</div></div>
+        <div class="metric" data-command="cw32.mcpToggle" title="点击：启停 MCP 服务"><div class="metric-label">MCP ↯</div><div class="metric-value" id="m-mcp">${mcpPortActive ? ':' + mcpPortActive : 'OFF'}</div></div>
       </div>
 
       <div class="srcbar">
         <span class="srcbar-label">源目录</span>
         <span class="srcbar-path mono" id="srcbar-path">${esc(state.sourceDir)}</span>
         <span class="srcbar-badge${state.sourceDirOverride ? '' : ' dim-badge'}" id="srcbar-badge">${state.sourceDirOverride ? '手动' : '自动'}</span>
-        <span class="sub-link" data-command="cw32l012.setSourceDir" title="输入路径切换源码目录（留空恢复自动探测）">切换</span>
+        <span class="sub-link" data-command="cw32.setSourceDir" title="输入路径切换源码目录（留空恢复自动探测）">切换</span>
       </div>
 
       <div class="flow">
-        <div class="stage" data-command="cw32l012.build" title="构建固件（先清理后 cargo build）">
+        <div class="stage" data-command="cw32.build" title="构建固件（先清理后 cargo build）">
           <div class="stage-num">1</div>
           <div class="stage-tag">Build</div>
           <div class="stage-title">构建</div>
           <div class="stage-line mono">cargo build（自动清理）<br>${esc(describeSelectedExample())}</div>
           <div class="sub-links">
-            <span class="sub-link" data-command="cw32l012.clean" title="仅清理构建产物">清理</span>
-            <span class="sub-link" data-command="cw32l012.selectExample" title="切换例程 / 目标">换例程</span>
+            <span class="sub-link" data-command="cw32.clean" title="仅清理构建产物">清理</span>
+            <span class="sub-link" data-command="cw32.selectExample" title="切换例程 / 目标">换例程</span>
           </div>
         </div>
         <div class="flow-arrow">→</div>
-        <div class="stage" data-command="cw32l012.flash" title="烧录（自动选有效产物）">
+        <div class="stage" data-command="cw32.flash" title="烧录（自动选有效产物）">
           <div class="stage-num">2</div>
           <div class="stage-tag">Flash</div>
           <div class="stage-title">烧录</div>
           <div class="stage-line mono">probe-rs download<br>自动选有效产物</div>
           <div class="sub-links">
-            <span class="sub-link" data-command="cw32l012.debug" title="烧录 + 断点 + 实时视图（含烧录，无需先点烧录）">SWD 调试</span>
-            <span class="sub-link danger" data-command="cw32l012.eraseAll" title="擦除整片 Flash（危险，会二次确认）">擦除芯片</span>
+            <span class="sub-link" data-command="cw32.debug" title="烧录 + 断点 + 实时视图（含烧录，无需先点烧录）">SWD 调试</span>
+            <span class="sub-link danger" data-command="cw32.eraseAll" title="擦除整片 Flash（危险，会二次确认）">擦除芯片</span>
           </div>
         </div>
         <div class="flow-arrow">→</div>
-        <div class="stage" data-command="cw32l012.monitor" title="打开串口监视器">
+        <div class="stage" data-command="cw32.monitor" title="打开串口监视器">
           <div class="stage-num">3</div>
           <div class="stage-tag">Monitor</div>
           <div class="stage-title">监视</div>
           <div class="stage-line">串口收发（COM 口 + 波特率）<br>寄存器 / 内存视图见下方面板</div>
           <div class="sub-links">
-            <span class="sub-link" data-command="cw32l012.serialSend" title="向已打开串口发送一行">发送一行</span>
+            <span class="sub-link" data-command="cw32.serialSend" title="向已打开串口发送一行">发送一行</span>
           </div>
         </div>
       </div>
@@ -2869,13 +2915,13 @@ async function buildDashboardHtml(): Promise<string> {
           <div class="pane-head">
             <span>可视化调试</span>
             <span>
-              <button class="mini-btn" data-command="cw32l012.debugPause">暂停</button>
-              <button class="mini-btn" data-command="cw32l012.debugResume">继续</button>
-              <button class="mini-btn" data-command="cw32l012.debugStepOver" title="步过 next">步过</button>
-              <button class="mini-btn" data-command="cw32l012.debugStepInto" title="步入 stepIn">步入</button>
-              <button class="mini-btn" data-command="cw32l012.debugStepOut" title="步出 stepOut">步出</button>
-              <button class="mini-btn" data-command="cw32l012.debugRestart" title="复位并重新运行">复位</button>
-              <button class="mini-btn" data-command="cw32l012.debugStop">停止</button>
+              <button class="mini-btn" data-command="cw32.debugPause">暂停</button>
+              <button class="mini-btn" data-command="cw32.debugResume">继续</button>
+              <button class="mini-btn" data-command="cw32.debugStepOver" title="步过 next">步过</button>
+              <button class="mini-btn" data-command="cw32.debugStepInto" title="步入 stepIn">步入</button>
+              <button class="mini-btn" data-command="cw32.debugStepOut" title="步出 stepOut">步出</button>
+              <button class="mini-btn" data-command="cw32.debugRestart" title="复位并重新运行">复位</button>
+              <button class="mini-btn" data-command="cw32.debugStop">停止</button>
             </span>
           </div>
           <div class="pane-body" id="debug-body"><div class="dim">无调试会话 — 点「② 烧录」卡内 SWD 调试 启动（自动烧录 + 断点）</div></div>
@@ -2931,8 +2977,8 @@ async function buildDashboardHtml(): Promise<string> {
             <div class="cmd-row"><code>curl http://127.0.0.1:${cfg.apiPort}/api/debug/state</code><button class="mini-btn" data-copy="curl http://127.0.0.1:${cfg.apiPort}/api/debug/state">复制</button></div>
             <div class="cmd-row"><code>curl http://127.0.0.1:${cfg.apiPort}/api/serial/tail</code><button class="mini-btn" data-copy="curl http://127.0.0.1:${cfg.apiPort}/api/serial/tail">复制</button></div>
             <div class="cmd-row"><code>curl "http://127.0.0.1:${cfg.apiPort}/api/detect?apply=1"</code><button class="mini-btn" data-copy="curl &quot;http://127.0.0.1:${cfg.apiPort}/api/detect?apply=1&quot;">复制</button></div>
-            MCP(SSE) 接入: <code>http://127.0.0.1:${cfg.mcpPort}/sse</code>（19 个工具） <button class="mini-btn" data-command="cw32l012.generateMcpJson">生成 .mcp.json</button><br>
-            全部端点: <code>GET /</code> ；鉴权: <code>x-cw32-token</code> 头（设置了 cw32l012.apiToken 时）
+            MCP(SSE) 接入: <code>http://127.0.0.1:${cfg.mcpPort}/sse</code>（19 个工具） <button class="mini-btn" data-command="cw32.generateMcpJson">生成 .mcp.json</button><br>
+            全部端点: <code>GET /</code> ；鉴权: <code>x-cw32-token</code> 头（设置了 cw32.apiToken 时）
           </div>
         </div>
         <div class="pane">
@@ -2968,7 +3014,7 @@ async function showDashboard(): Promise<void> {
     dashboardPanel.webview.html = html;
     return;
   }
-  dashboardPanel = vscode.window.createWebviewPanel('cw32l012.dashboard', DASHBOARD_TITLE, vscode.ViewColumn.One, {
+  dashboardPanel = vscode.window.createWebviewPanel('cw32.dashboard', DASHBOARD_TITLE, vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true
   });
@@ -2981,21 +3027,21 @@ async function handleWebviewMessage(message: { command?: string; address?: strin
   const command = message.command;
   if (!command) return;
   switch (command) {
-    case 'cw32l012.build': await humanLease('build', runBuild); break;
-    case 'cw32l012.rebuild': await humanLease('rebuild', runRebuild); break;
-    case 'cw32l012.clean': await humanLease('clean', runClean); break;
-    case 'cw32l012.flash': await humanLease('flash', runFlash); break;
-    case 'cw32l012.selectArtifact': await humanLease('选择固件并烧录', selectArtifact); break;
-    case 'cw32l012.selectExample': await humanLease('选择例程', selectExample); break;
-    case 'cw32l012.setSourceDir': await humanLease('切换源目录', setSourceDir); break;
-    case 'cw32l012.eraseAll': await humanLease('全片擦除', eraseAll); break;
-    case 'cw32l012.reset': await humanLease('reset', resetTarget); break;
-    case 'cw32l012.checkStatus': await checkStatus(); break;
-    case 'cw32l012.detectChip': await humanLease('芯片识别', runChipDetect); await updateDashboardView(); break;
-    case 'cw32l012.generateMcpJson': await generateMcpJson(); break;
-    case 'cw32l012.monitor': await humanLease('串口监视', openSerialMonitor); break;
-    case 'cw32l012.serialSend': await serialSendLine(); break;
-    case 'cw32l012.debug': await humanLease('启动调试', startDebugSession); break;
+    case 'cw32.build': await humanLease('build', runBuild); break;
+    case 'cw32.rebuild': await humanLease('rebuild', runRebuild); break;
+    case 'cw32.clean': await humanLease('clean', runClean); break;
+    case 'cw32.flash': await humanLease('flash', runFlash); break;
+    case 'cw32.selectArtifact': await humanLease('选择固件并烧录', selectArtifact); break;
+    case 'cw32.selectExample': await humanLease('选择例程', selectExample); break;
+    case 'cw32.setSourceDir': await humanLease('切换源目录', setSourceDir); break;
+    case 'cw32.eraseAll': await humanLease('全片擦除', eraseAll); break;
+    case 'cw32.reset': await humanLease('reset', resetTarget); break;
+    case 'cw32.checkStatus': await checkStatus(); break;
+    case 'cw32.detectChip': await humanLease('芯片识别', runChipDetect); await updateDashboardView(); break;
+    case 'cw32.generateMcpJson': await generateMcpJson(); break;
+    case 'cw32.monitor': await humanLease('串口监视', openSerialMonitor); break;
+    case 'cw32.serialSend': await serialSendLine(); break;
+    case 'cw32.debug': await humanLease('启动调试', startDebugSession); break;
     case 'copyText': {
       const text = typeof (message as { text?: string }).text === 'string' ? (message as { text?: string }).text! : '';
       if (text) {
@@ -3009,21 +3055,21 @@ async function handleWebviewMessage(message: { command?: string; address?: strin
       if (url) await vscode.env.openExternal(vscode.Uri.parse(url));
       break;
     }
-    case 'cw32l012.debugPause': await humanLease('调试-暂停', () => debugControl('pause')); break;
-    case 'cw32l012.debugResume': await humanLease('调试-继续', () => debugControl('continue')); break;
-    case 'cw32l012.debugStepOver': await humanLease('调试-步过', () => debugControl('next')); break;
-    case 'cw32l012.debugStepInto': await humanLease('调试-步入', () => debugControl('stepIn')); break;
-    case 'cw32l012.debugStepOut': await humanLease('调试-步出', () => debugControl('stepOut')); break;
-    case 'cw32l012.debugRestart': await humanLease('调试-复位重跑', () => debugControl('restart')); break;
-    case 'cw32l012.debugStop':
+    case 'cw32.debugPause': await humanLease('调试-暂停', () => debugControl('pause')); break;
+    case 'cw32.debugResume': await humanLease('调试-继续', () => debugControl('continue')); break;
+    case 'cw32.debugStepOver': await humanLease('调试-步过', () => debugControl('next')); break;
+    case 'cw32.debugStepInto': await humanLease('调试-步入', () => debugControl('stepIn')); break;
+    case 'cw32.debugStepOut': await humanLease('调试-步出', () => debugControl('stepOut')); break;
+    case 'cw32.debugRestart': await humanLease('调试-复位重跑', () => debugControl('restart')); break;
+    case 'cw32.debugStop':
       if (debugSession) { await vscode.debug.stopDebugging(debugSession); }
       break;
-    case 'cw32l012.aiSummary': await collectDiagnostics(); break;
-    case 'cw32l012.showDashboard': await showDashboard(); break;
-    case 'cw32l012.apiToggle':
+    case 'cw32.aiSummary': await collectDiagnostics(); break;
+    case 'cw32.showDashboard': await showDashboard(); break;
+    case 'cw32.apiToggle':
       await (apiServer ? stopApiServer() : startApiServer());
       break;
-    case 'cw32l012.mcpToggle':
+    case 'cw32.mcpToggle':
       await (mcpServer ? Promise.resolve(stopMcpServer()) : startMcpServer());
       break;
     case 'readMemory': {
@@ -3087,7 +3133,8 @@ class CwAdapterDescriptorFactory implements vscode.DebugAdapterDescriptorFactory
 export function activate(context: vscode.ExtensionContext): void {
   extContext = context;
   extVersion = String((context.extension.packageJSON as { version?: string })?.version ?? extVersion);
-  logBoth(`[init] CW32L012 Tools v${extVersion} 已激活`);
+  logBoth(`[init] CW32 Tools v${extVersion} 已激活`);
+  migrateLegacyIdentity(context);
 
   // 恢复上次选择的例程（按工作区持久化）
   const workspaceKey = getWorkspaceRoot() ?? 'default';
@@ -3097,37 +3144,37 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const register = (id: string, fn: (...args: unknown[]) => unknown) =>
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
-  register('cw32l012.build', () => humanLease('build', runBuild));
-  register('cw32l012.rebuild', () => humanLease('rebuild', runRebuild));
-  register('cw32l012.clean', () => humanLease('clean', runClean));
-  register('cw32l012.flash', () => humanLease('flash', runFlash));
-  register('cw32l012.selectArtifact', () => humanLease('选择固件并烧录', selectArtifact));
-  register('cw32l012.selectExample', () => humanLease('选择例程', selectExample));
-  register('cw32l012.setSourceDir', () => humanLease('切换源目录', setSourceDir));
-  register('cw32l012.eraseAll', () => humanLease('全片擦除', eraseAll));
-  register('cw32l012.reset', () => humanLease('reset', resetTarget));
-  register('cw32l012.checkStatus', () => humanLease('状态检测', checkStatus));
-  register('cw32l012.monitor', () => humanLease('串口监视', openSerialMonitor));
-  register('cw32l012.serialSend', serialSendLine);
-  register('cw32l012.debug', () => humanLease('启动调试', startDebugSession));
-  register('cw32l012.debugPause', () => humanLease('调试-暂停', () => debugControl('pause')));
-  register('cw32l012.debugResume', () => humanLease('调试-继续', () => debugControl('continue')));
-  register('cw32l012.debugStepOver', () => humanLease('调试-步过', () => debugControl('next')));
-  register('cw32l012.debugStepInto', () => humanLease('调试-步入', () => debugControl('stepIn')));
-  register('cw32l012.debugStepOut', () => humanLease('调试-步出', () => debugControl('stepOut')));
-  register('cw32l012.debugRestart', () => humanLease('调试-复位重跑', debugRestart));
-  register('cw32l012.debugStop', () => {
+  register('cw32.build', () => humanLease('build', runBuild));
+  register('cw32.rebuild', () => humanLease('rebuild', runRebuild));
+  register('cw32.clean', () => humanLease('clean', runClean));
+  register('cw32.flash', () => humanLease('flash', runFlash));
+  register('cw32.selectArtifact', () => humanLease('选择固件并烧录', selectArtifact));
+  register('cw32.selectExample', () => humanLease('选择例程', selectExample));
+  register('cw32.setSourceDir', () => humanLease('切换源目录', setSourceDir));
+  register('cw32.eraseAll', () => humanLease('全片擦除', eraseAll));
+  register('cw32.reset', () => humanLease('reset', resetTarget));
+  register('cw32.checkStatus', () => humanLease('状态检测', checkStatus));
+  register('cw32.monitor', () => humanLease('串口监视', openSerialMonitor));
+  register('cw32.serialSend', serialSendLine);
+  register('cw32.debug', () => humanLease('启动调试', startDebugSession));
+  register('cw32.debugPause', () => humanLease('调试-暂停', () => debugControl('pause')));
+  register('cw32.debugResume', () => humanLease('调试-继续', () => debugControl('continue')));
+  register('cw32.debugStepOver', () => humanLease('调试-步过', () => debugControl('next')));
+  register('cw32.debugStepInto', () => humanLease('调试-步入', () => debugControl('stepIn')));
+  register('cw32.debugStepOut', () => humanLease('调试-步出', () => debugControl('stepOut')));
+  register('cw32.debugRestart', () => humanLease('调试-复位重跑', debugRestart));
+  register('cw32.debugStop', () => {
     if (debugSession) { void vscode.debug.stopDebugging(debugSession); }
     else { vscode.window.showWarningMessage('无活动调试会话。'); }
   });
-  register('cw32l012.aiSummary', () => collectDiagnostics());
-  register('cw32l012.showDashboard', showDashboard);
-  register('cw32l012.detectChip', () => humanLease('芯片识别', runChipDetect));
-  register('cw32l012.generateMcpJson', generateMcpJson);
-  register('cw32l012.apiToggle', () => (apiServer ? stopApiServer() : startApiServer()));
-  register('cw32l012.mcpToggle', () => (mcpServer ? Promise.resolve(stopMcpServer()) : startMcpServer()));
-  register('cw32l012.apiStart', startApiServer);
-  register('cw32l012.apiStop', stopApiServer);
+  register('cw32.aiSummary', () => collectDiagnostics());
+  register('cw32.showDashboard', showDashboard);
+  register('cw32.detectChip', () => humanLease('芯片识别', runChipDetect));
+  register('cw32.generateMcpJson', generateMcpJson);
+  register('cw32.apiToggle', () => (apiServer ? stopApiServer() : startApiServer()));
+  register('cw32.mcpToggle', () => (mcpServer ? Promise.resolve(stopMcpServer()) : startMcpServer()));
+  register('cw32.apiStart', startApiServer);
+  register('cw32.apiStop', stopApiServer);
 
   // 调试适配器（probe-rs dap-server）
   context.subscriptions.push(
@@ -3138,7 +3185,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!config.type && !config.request && !config.name) {
           const root = getWorkspaceRoot();
           if (!root) {
-            vscode.window.showWarningMessage('请先打开 CW32L012 工作区。');
+            vscode.window.showWarningMessage('请先打开 CW32 工作区。');
             return undefined;
           }
           const artifact = await resolveArtifact(root);
@@ -3200,10 +3247,10 @@ export function activate(context: vscode.ExtensionContext): void {
       webviewView.webview.onDidReceiveMessage(handleWebviewMessage);
     }
   };
-  context.subscriptions.push(vscode.window.registerWebviewViewProvider('cw32l012.dashboard', dashboardProvider));
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider('cw32.dashboard', dashboardProvider));
 
   // 状态轮询：2s 常规状态，1s 调试数据（仅当会话存在）
-  context.subscriptions.push(vscode.commands.registerCommand('cw32l012._noop', () => undefined));
+  context.subscriptions.push(vscode.commands.registerCommand('cw32._noop', () => undefined));
   const stateTimer = setInterval(() => { void pushDashState(); }, 2000);
   const debugTimer = setInterval(() => { void pushDebugState(); }, 1000);
   const statusTimer = setInterval(() => { void refreshStatusBar(); }, 5000);
@@ -3213,13 +3260,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   updateDashboardView();
 
-  // cw32l012.* 配置变更 → 设置版本 +1（AI 乐观锁感知「人类恶作剧」）
+  // cw32.* 配置变更 → 设置版本 +1（AI 乐观锁感知「人类恶作剧」）
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-    if (e.affectsConfiguration('cw32l012')) bumpSettingsEpoch('cw32l012.* 配置被修改');
+    if (e.affectsConfiguration('cw32')) bumpSettingsEpoch('cw32.* 配置被修改');
   }));
 
   // API 自动启动
-  if (getConfig().apiPort > 0 && vscode.workspace.getConfiguration('cw32l012').get<boolean>('apiAutoStart') !== false) {
+  if (getConfig().apiPort > 0 && vscode.workspace.getConfiguration('cw32').get<boolean>('apiAutoStart') !== false) {
     startApiServer().then(msg => vscode.window.showInformationMessage(msg)).catch(err =>
       logBoth(`[api] 启动失败: ${err instanceof Error ? err.message : err}`));
   }
@@ -3230,7 +3277,7 @@ export function activate(context: vscode.ExtensionContext): void {
       logBoth(`[mcp] 启动失败: ${err instanceof Error ? err.message : err}`));
   }
 
-  vscode.window.showInformationMessage(`CW32L012 Tools v${extVersion} 就绪：Build → Flash → Debug；Agent API + MCP 见仪表盘。`);
+  vscode.window.showInformationMessage(`CW32 Tools v${extVersion} 就绪：Build → Flash → Debug；Agent API + MCP 见仪表盘。`);
 }
 
 export function deactivate(): void {

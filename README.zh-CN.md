@@ -22,7 +22,7 @@ VS Code 插件：面向武汉芯源（CW/CMsemi）CW32L012（Cortex-M0+，64KB F
 | 自动/手动烧录 | 自动选最新有效产物，或从候选列表中手选；`.bin` 按 `flashBaseAddress=0x00000000` 烧录 | 已实现 |
 | 全片擦除 | `probe-rs erase --allow-erase-all` | 已实现（0.6.0 起并入命令面板/仪表盘） |
 | 复位 | `probe-rs reset`，同时作为 MCU 在线判据 | 已实现 |
-| 可视化调试 | `cw32l012-probe-rs` 调试类型，spawn `probe-rs dap-server --single-session`；VS Code 原生断点/单步/监视 + 仪表盘 PC/调用栈/变量/内存 hex 视图 | 已实现 |
+| 可视化调试 | `cw32-probe-rs` 调试类型，spawn `probe-rs dap-server --single-session`；VS Code 原生断点/单步/监视 + 仪表盘 PC/调用栈/变量/内存 hex 视图 | 已实现 |
 | 仪表盘 | 侧边栏 Webview：状态分级、可交互状态条、工作流主卡（①构建→②烧录→③监视）、调试/内存面板、日志环 | 已实现 |
 | Agent API | localhost HTTP JSON，AI / 脚本直连（详见下文与 `docs/AGENT_API.md`） | 已实现 |
 | 串口监视器 | **VS Code 面板内实现**（不依赖外部工具），支持发送 | 已实现 |
@@ -63,19 +63,19 @@ probe-rs list                         # 应列出 [0] ST-LINK ... 0483:3748
 
 ```bash
 # 命令行安装
-code --install-extension cw32l012-tools-0.6.7.vsix
+code --install-extension cw32-tools-0.6.7.vsix
 
 # 或从源码重新打包后安装
 npm ci && npm run compile
 npx @vscode/vsce package
-code --install-extension cw32l012-tools-0.6.7.vsix
+code --install-extension cw32-tools-0.6.7.vsix
 ```
 
 也可以在 VS Code 扩展面板右上角 `...` → *Install from VSIX…* 选择文件。安装后从活动栏 **CW32L012** 图标进入仪表盘。
 
 ### 3. 打开工作区
 
-必须打开包含 `Cargo.toml` 的 Rust 工程（推荐 `c:\Users\Administrator\Desktop\cw32l012-hal\cw32l012-hal`）。插件自动向上查找 Cargo 根目录；也可用 `cw32l012.workspaceRoot` 手动指定（0.6.5 起仪表盘「源目录」栏可视化切换）。
+必须打开包含 `Cargo.toml` 的 Rust 工程（推荐 `c:\Users\Administrator\Desktop\cw32l012-hal\cw32l012-hal`）。插件自动向上查找 Cargo 根目录；也可用 `cw32.workspaceRoot` 手动指定（0.6.5 起仪表盘「源目录」栏可视化切换）。
 
 ---
 
@@ -83,7 +83,7 @@ code --install-extension cw32l012-tools-0.6.7.vsix
 
 1. **Build** — 在仪表盘点「固件构建」（或命令面板执行 `CW32L012: Build firmware`）。插件先 `cargo clean` 再 `cargo build --target thumbv6m-none-eabi --examples`，产出位于 `target\thumbv6m-none-eabi\debug\examples\`（例如 `blink_pc13`，无扩展名 ELF）。
 2. **Flash** — 点「烧录」（自动选中最新有效产物，ELF 魔数已校验），或点「选择固件」手动挑选。ST-LINK + SWD 接线（SWDIO/SWCLK/GND）后即烧入，随后自动做 probe/MCU 分级检测。
-3. **Debug** — 点「SWD 调试」：自动烧录当前 ELF 并启动 probe-rs DAP 会话。直接在源码上打断点，按 F5 启动 `cw32l012-probe-rs` 类型调试；仪表盘「可视化调试」面板实时显示 PC、调用栈、变量，「内存视图」可读任意地址。
+3. **Debug** — 点「SWD 调试」：自动烧录当前 ELF 并启动 probe-rs DAP 会话。直接在源码上打断点，按 F5 启动 `cw32-probe-rs` 类型调试；仪表盘「可视化调试」面板实时显示 PC、调用栈、变量，「内存视图」可读任意地址。
 
 > MCU 状态分级：**probe online ≠ MCU online**。探针枚举成功只代表 USB 链路通了；MCU 是否在线以 `probe-rs reset` 是否应答为准（`/api/status?deep=1` 或「深度检测」命令）。
 
@@ -95,44 +95,44 @@ code --install-extension cw32l012-tools-0.6.7.vsix
 
 | 命令 ID | 标题 | 作用 |
 |---|---|---|
-| `cw32l012.showDashboard` | CW32L012: Open dashboard | 打开仪表盘面板 |
-| `cw32l012.build` | CW32L012: Build firmware | 已选例程=增量构建；自动模式=clean + build --examples |
-| `cw32l012.flash` | CW32L012: Flash via DAPLink | 烧录（自动选产物） |
-| `cw32l012.selectArtifact` | CW32L012: 选择固件烧录 | 从校验过的产物列表手选 |
-| `cw32l012.debug` | CW32L012: Start SWD debug session | 自动烧录 + 启动 DAP 调试 |
-| `cw32l012.debugPause` / `debugResume` / `debugStepOver` / `debugStepInto` / `debugStepOut` / `debugRestart` | 调试-暂停/继续/步过/步入/步出/复位重跑 | 对活动 DAP 会话的单步控制（0.6.0+） |
-| `cw32l012.debugStop` | CW32L012: 调试-停止会话 | 结束当前 DAP 调试会话（0.6.6+） |
-| `cw32l012.rebuild` | CW32L012: 重新构建 | clean + build（忽略例程选择，全量重建） |
-| `cw32l012.clean` | CW32L012: 清理构建产物 | 仅 `cargo clean` |
-| `cw32l012.eraseAll` | CW32L012: 全片擦除 | `probe-rs erase --allow-erase-all`（模态二次确认） |
-| `cw32l012.checkStatus` | CW32L012: 深度检测 probe / MCU 状态 | reset 级 MCU 检测 |
-| `cw32l012.reset` | CW32L012: Reset target | probe-rs reset |
-| `cw32l012.monitor` | CW32L012: Open serial monitor | 打开串口监视器（0.6.0：VS Code 内实现） |
-| `cw32l012.aiSummary` | CW32L012: AI 诊断报告 | 收集诊断信息并复制到剪贴板 |
-| `cw32l012.apiToggle` | CW32L012: 启动/停止 Agent API | 开关 API 服务 |
-| `cw32l012.apiStart` | CW32L012: 启动 Agent API | 启动 API |
-| `cw32l012.apiStop` | CW32L012: 停止 Agent API | 停止 API |
-| `cw32l012.setSourceDir` | CW32L012: 指定源码目录 | 输入路径写回 `workspaceRoot` 设置；留空恢复自动探测（仪表盘「源目录」栏同入口） |
+| `cw32.showDashboard` | CW32L012: Open dashboard | 打开仪表盘面板 |
+| `cw32.build` | CW32L012: Build firmware | 已选例程=增量构建；自动模式=clean + build --examples |
+| `cw32.flash` | CW32L012: Flash via DAPLink | 烧录（自动选产物） |
+| `cw32.selectArtifact` | CW32L012: 选择固件烧录 | 从校验过的产物列表手选 |
+| `cw32.debug` | CW32L012: Start SWD debug session | 自动烧录 + 启动 DAP 调试 |
+| `cw32.debugPause` / `debugResume` / `debugStepOver` / `debugStepInto` / `debugStepOut` / `debugRestart` | 调试-暂停/继续/步过/步入/步出/复位重跑 | 对活动 DAP 会话的单步控制（0.6.0+） |
+| `cw32.debugStop` | CW32L012: 调试-停止会话 | 结束当前 DAP 调试会话（0.6.6+） |
+| `cw32.rebuild` | CW32L012: 重新构建 | clean + build（忽略例程选择，全量重建） |
+| `cw32.clean` | CW32L012: 清理构建产物 | 仅 `cargo clean` |
+| `cw32.eraseAll` | CW32L012: 全片擦除 | `probe-rs erase --allow-erase-all`（模态二次确认） |
+| `cw32.checkStatus` | CW32L012: 深度检测 probe / MCU 状态 | reset 级 MCU 检测 |
+| `cw32.reset` | CW32L012: Reset target | probe-rs reset |
+| `cw32.monitor` | CW32L012: Open serial monitor | 打开串口监视器（0.6.0：VS Code 内实现） |
+| `cw32.aiSummary` | CW32L012: AI 诊断报告 | 收集诊断信息并复制到剪贴板 |
+| `cw32.apiToggle` | CW32L012: 启动/停止 Agent API | 开关 API 服务 |
+| `cw32.apiStart` | CW32L012: 启动 Agent API | 启动 API |
+| `cw32.apiStop` | CW32L012: 停止 Agent API | 停止 API |
+| `cw32.setSourceDir` | CW32L012: 指定源码目录 | 输入路径写回 `workspaceRoot` 设置；留空恢复自动探测（仪表盘「源目录」栏同入口） |
 
-### 配置项（`settings.json` 键 `cw32l012.*`）
+### 配置项（`settings.json` 键 `cw32.*`）
 
 | 配置键 | 默认值 | 说明 |
 |---|---|---|
-| `cw32l012.target` | `thumbv6m-none-eabi` | Rust target triple |
-| `cw32l012.profile` | `debug`（可选 `release`） | cargo profile，产物解析依据 |
-| `cw32l012.chip` | `CW32L012x8` | probe-rs 芯片名 |
-| `cw32l012.chipDescriptionPath` | `C:\Users\Administrator\Downloads\CW32L0_Series.yaml` | 官方 CW32L0 系列 YAML 路径 |
-| `cw32l012.probeId` | `0483:3748` | 探针 VID:PID |
-| `cw32l012.protocol` | `swd`（可选 `jtag`） | 调试协议 |
-| `cw32l012.flashBaseAddress` | `0x00000000` | `.bin` 烧录基地址（CW32L012 FLASH ORIGIN = 0x0，不是 STM32 的 0x08000000） |
-| `cw32l012.workspaceRoot` | 空（自动检测） | 手动指定 Cargo 根目录 |
-| `cw32l012.apiPort` | `3678` | Agent API 端口（仅 127.0.0.1） |
-| `cw32l012.apiToken` | 空 | 设置后请求必须带 `x-cw32-token` 头 |
-| `cw32l012.apiAutoStart` | `true` | 插件激活时自动启动 API |
-| `cw32l012.verifyAfterFlash` | `true` | 烧录后自动 `probe-rs verify` 校验（0.6.0+） |
-| `cw32l012.monitorBaudRate` | `115200` | 串口监视器默认波特率（0.6.0+） |
-| `cw32l012.mcpPort` | `3679` | 内嵌 MCP 服务器端口（SSE，仅 127.0.0.1）（0.6.1+） |
-| `cw32l012.mcpAutoStart` | `true` | 插件激活时自动启动 MCP 服务器（0.6.1+） |
+| `cw32.target` | `thumbv6m-none-eabi` | Rust target triple |
+| `cw32.profile` | `debug`（可选 `release`） | cargo profile，产物解析依据 |
+| `cw32.chip` | `CW32L012x8` | probe-rs 芯片名 |
+| `cw32.chipDescriptionPath` | `C:\Users\Administrator\Downloads\CW32L0_Series.yaml` | 官方 CW32L0 系列 YAML 路径 |
+| `cw32.probeId` | `0483:3748` | 探针 VID:PID |
+| `cw32.protocol` | `swd`（可选 `jtag`） | 调试协议 |
+| `cw32.flashBaseAddress` | `0x00000000` | `.bin` 烧录基地址（CW32L012 FLASH ORIGIN = 0x0，不是 STM32 的 0x08000000） |
+| `cw32.workspaceRoot` | 空（自动检测） | 手动指定 Cargo 根目录 |
+| `cw32.apiPort` | `3678` | Agent API 端口（仅 127.0.0.1） |
+| `cw32.apiToken` | 空 | 设置后请求必须带 `x-cw32-token` 头 |
+| `cw32.apiAutoStart` | `true` | 插件激活时自动启动 API |
+| `cw32.verifyAfterFlash` | `true` | 烧录后自动 `probe-rs verify` 校验（0.6.0+） |
+| `cw32.monitorBaudRate` | `115200` | 串口监视器默认波特率（0.6.0+） |
+| `cw32.mcpPort` | `3679` | 内嵌 MCP 服务器端口（SSE，仅 127.0.0.1）（0.6.1+） |
+| `cw32.mcpAutoStart` | `true` | 插件激活时自动启动 MCP 服务器（0.6.1+） |
 
 ---
 
@@ -193,13 +193,13 @@ MIT，见 [LICENSE](LICENSE)。
 ## MCP 服务器（0.6.1+，AI 直连）
 
 插件内置 MCP（Model Context Protocol）服务器：SSE 传输，
-`http://127.0.0.1:3679/sse`（配置 `cw32l012.mcpPort` / `cw32l012.mcpAutoStart`）。
+`http://127.0.0.1:3679/sse`（配置 `cw32.mcpPort` / `cw32.mcpAutoStart`）。
 19 个工具覆盖硬件工作流（状态/构建/烧录/调试控制/内存读写/外设寄存器/串口/诊断），
 **不含代码编辑工具**（编辑是 VS Code 本体与 AI 编辑器的职责）。
 Claude Code 配置：
 
 ```json
-{ "mcpServers": { "cw32l012": { "type": "sse", "url": "http://127.0.0.1:3679/sse" } } }
+{ "mcpServers": { "cw32": { "type": "sse", "url": "http://127.0.0.1:3679/sse" } } }
 ```
 
 ## AI × 人类 并发防护（0.6.2+）

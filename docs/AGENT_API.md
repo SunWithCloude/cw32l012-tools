@@ -49,8 +49,8 @@ curl -s "http://127.0.0.1:3678/api/memory?address=0x0&length=8"
 | POST | `/api/erase` | 全片擦除（`probe-rs erase --allow-erase-all`） | `{ ok, erased: true }` |
 | GET | `/api/memory` | 读内存：`?address=0x20000000&length=64`（length 1–256；占租约）。**0.7 起会话存活期间只走 DAP**（运行态失败自动 pause→读→resume），无会话走 probe-rs CLI | `{ ok, address, length, paused, hex, ascii }` |
 | POST | `/api/memory` | 写内存：body `{"address":"0x20000000","hex":"00112233"}`（4 字节对齐，需调试会话） | `{ ok, address, bytesWritten }` |
-| GET | `/api/registers?name=sysctrl` | 外设寄存器读取 + 位段解码（外设列表随 `cw32l012.family`：L012=sysctrl/gpioa/gpiob/gpioc/gpiof/uart1，F030=sysctrl/gpioa/gpiob/gpioc/uart1；占租约） | `{ ok, peripheral, label, base, regs: [{ name, offset, value, fields }] }` |
-| GET | `/api/detect?apply=1` | **0.7+** 运行 cw32-detect 读出厂数字签名识别芯片（型号串/Flash/RAM/管脚/UID/probe-rs 目标名）；`apply=1` 把识别到的芯片名写入 `cw32l012.chip`。需安装 cw32-detect（github.com/SunWithCloude/cw32-probe-rs-compat）或用 `cw32l012.detectPath` 指向它；占租约 | `{ ok, chip, type_string, flash, ram, pins, uid, match, appliedChip }` |
+| GET | `/api/registers?name=sysctrl` | 外设寄存器读取 + 位段解码（外设列表随 `cw32.family`：L012=sysctrl/gpioa/gpiob/gpioc/gpiof/uart1，F030=sysctrl/gpioa/gpiob/gpioc/uart1；占租约） | `{ ok, peripheral, label, base, regs: [{ name, offset, value, fields }] }` |
+| GET | `/api/detect?apply=1` | **0.7+** 运行 cw32-detect 读出厂数字签名识别芯片（型号串/Flash/RAM/管脚/UID/probe-rs 目标名）；`apply=1` 把识别到的芯片名写入 `cw32.chip`。需安装 cw32-detect（github.com/SunWithCloude/cw32-probe-rs-compat）或用 `cw32.detectPath` 指向它；占租约 | `{ ok, chip, type_string, flash, ram, pins, uid, match, appliedChip }` |
 | GET | `/api/debug/state` | 调试会话状态：PC / 调用栈 / 变量 | `{ ok, debug: { active, sessionName, pc, frames, variables } }` |
 | POST | `/api/debug/pause` | 暂停核心 | `{ ok, paused: true }` |
 | POST | `/api/debug/continue` | 继续运行 | `{ ok, running: true }` |
@@ -123,7 +123,7 @@ curl -s -X POST "$API/api/debug/continue"           # 继续
 | HTTP 状态码 | 场景 | error 提示示例 | AI 应如何处置 |
 |---|---|---|---|
 | `200` | 成功 | — | 正常 |
-| `401` | 设置了 `cw32l012.apiToken` 但请求没带 / 带错 token | `token 不匹配（设置 cw32l012.apiToken 后需携带 x-cw32-token 头）` | 加上 `-H "x-cw32-token: <token>"` 重试 |
+| `401` | 设置了 `cw32.apiToken` 但请求没带 / 带错 token | `token 不匹配（设置 cw32.apiToken 后需携带 x-cw32-token 头）` | 加上 `-H "x-cw32-token: <token>"` 重试 |
 | `404` | 未知端点 | `未知端点 POST /api/foo`（body 带 `routes` 帮助） | 对照端点总表修正路径 |
 | `409` | 没有打开工作区 / 未找到有效固件 / 无调试会话时调 pause | `未打开工作区`、`未找到有效固件，请先 build（artifact 错误，不是 MCU 不在线）`、`没有活动调试会话` | 区分场景：先 open workspace；先 `POST /api/build`；先启动调试会话 |
 | `422` | **防伪烧录**：`/api/flash` body 传了未通过校验的路径 | `"..." 未通过固件校验（.elf/.bin/.hex + ELF 魔数），这是 artifact 错误，不是 MCU 问题` | **不要重试同一路径**。用 `GET /api/examples` + 已知产物路径，或直接不带 body 自动选产物 |
@@ -145,7 +145,7 @@ curl -s -X POST "$API/api/debug/continue"           # 继续
 
 ## 4. Token 鉴权（可选）
 
-设置配置项 `cw32l012.apiToken`（非空）后，所有 API 请求必须携带 token，两种方式任选其一：
+设置配置项 `cw32.apiToken`（非空）后，所有 API 请求必须携带 token，两种方式任选其一：
 
 ```bash
 # 方式一：请求头（推荐）
@@ -178,7 +178,7 @@ curl -s "http://127.0.0.1:3678/api/status?token=mysecret"
 
 - **长任务**：`/api/build` 可长达 10 分钟、`/api/flash` 3 分钟。客户端 curl 请设足够超时（如 `--max-time 620`），不要过早判死。
 - **并发**：API 内部串行执行命令；并发发多个烧录/构建会排队。
-- **端口占用**：`apiPort` 被占用时插件会提示 API 启动失败；改 `cw32l012.apiPort` 或停用其他占用进程。
+- **端口占用**：`apiPort` 被占用时插件会提示 API 启动失败；改 `cw32.apiPort` 或停用其他占用进程。
 - **apiAutoStart=false** 时需手动执行 `CW32L012: 启动 Agent API` 才能连上。
 
 ---
@@ -186,7 +186,7 @@ curl -s "http://127.0.0.1:3678/api/status?token=mysecret"
 ## 内嵌 MCP 服务器（0.6.1+）
 
 除 HTTP API 外，插件内置 **MCP（Model Context Protocol）服务器**：SSE 传输，
-默认端口 `3679`（配置 `cw32l012.mcpPort`，仅绑定 127.0.0.1，随插件自动启动）。
+默认端口 `3679`（配置 `cw32.mcpPort`，仅绑定 127.0.0.1，随插件自动启动）。
 Claude Code / 其他 MCP 客户端配置：
 
 ```json
@@ -214,7 +214,7 @@ Claude Code / 其他 MCP 客户端配置：
   API 租约在请求处理完毕（含异常/客户端中断）后才释放，操作不会因 curl 中断而
   提前放锁。
   `GET /api/status` 与 `cw32_status` 都返回当前 `lease` 占用情况。
-- **设置版本号 settingsEpoch**：`cw32l012.*` 配置或例程选择被改动即 +1
+- **设置版本号 settingsEpoch**：`cw32.*` 配置或例程选择被改动即 +1
   （注：固件选择是「选了即烧」的一次性操作，无持久状态，由租约保护而非 epoch）。
   AI 的 `cw32_build` / `cw32_flash` / `cw32_debug_start` 可带 `expectedEpoch`（校验在租约内进行；三个工具成功响应也返回当前 settingsEpoch）（来自上次 `cw32_status`）；不匹配则拒绝执行并提示重新
   status——防止「AI 按旧设置烧录了人类刚改过的配置」这类静默事故。
